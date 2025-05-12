@@ -1,0 +1,399 @@
+generator client {
+  provider = "prisma-client-js"
+  // output   = "./generated/prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  firstName           String
+  lastName            String?
+  email               String               @unique
+  password            String
+  phone               String?              @unique
+  // role                Role?                @default(ADMIN)
+  status              UserStatus           @default(ACTIVE)
+  termsAccepted       Boolean              @default(false)
+  phoneVerified       Boolean              @default(false)
+  emailVerified       Boolean              @default(false)
+  isActive            Boolean              @default(true)
+  profileImageUrl     String?
+  lastLogin           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  locationId          String?
+  location            Location?            @relation("UserLocation", fields: [locationId], references: [id])
+  bills               Bill[]
+  cart                CartItem[]
+  invitationsSent     Invitation[]         @relation("InvitedBy")
+  invitationsReceived Invitation[]         @relation("InvitedUser")
+  orders              Order[]
+  ownedWorkspaces     Workspace[]          @relation("OwnedWorkspaces")
+  workspaces          Workspace[]          @relation("UserWorkspaces")
+  Address             Address[]
+  Notification        Notification[]
+  OrderStatusHistory  OrderStatusHistory[]
+  UserRole            UserRole[]
+  UserDevice          UserDevice[]
+  isDeleted           Boolean              @default(false)
+
+  // Index on email and phone for fast lookup
+  @@index([email])
+  @@index([phone])
+  @@index([locationId])
+}
+
+model Workspace {
+  id              Int              @id @default(autoincrement())
+  name            String           @unique
+  slug            String           @unique
+  description     String?
+  images          String[]         @default([])
+  openingTime     String?
+  closingTime     String?
+  UserRole        UserRole[]
+  isDeleted       Boolean          @default(false)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  ownerId         String
+  locationId      String?
+  location        Location?        @relation("WorkspaceLocation", fields: [locationId], references: [id])
+  categories      Category[]
+  invitations     Invitation[]
+  orders          Order[]
+  products        Product[]
+  rolePermissions RolePermission[]
+  owner           User             @relation("OwnedWorkspaces", fields: [ownerId], references: [id])
+  users           User[]           @relation("UserWorkspaces")
+  Notification    Notification[]
+
+  // Index on the ownerId for efficient lookup of workspaces owned by a user
+  @@index([ownerId])
+  @@index([slug])
+  @@index([locationId])
+}
+
+model RolePermission {
+  id          Int       @id @default(autoincrement())
+  workspaceId Int
+  role        Role
+  permission  String[]
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, role])
+}
+
+model Location {
+  id         String   @id @default(uuid())
+  name       String
+  address    String
+  street     String?
+  city       String
+  region     String
+  postalCode String
+  country    String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users      User[]      @relation("UserLocation")
+  workspaces Workspace[] @relation("WorkspaceLocation")
+
+  @@index([city, region])
+  @@index([postalCode])
+  @@index([name])
+}
+
+model Product {
+  id          String           @id @default(uuid())
+  name        String
+  slug        String           @unique
+  description String
+  images      String[]
+  isActive    Boolean          @default(true)
+  categoryId  String
+  workspaceId Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  category    Category         @relation(fields: [categoryId], references: [id])
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id])
+  variants    ProductVariant[]
+
+  // Adding indexes for frequently searched fields
+  @@index([workspaceId]) // To quickly filter products by workspaceId
+  @@index([name, isActive]) // To quickly filter by name and active status
+  @@index([slug]) // Index for searching by slug
+}
+
+model ProductVariant {
+  id          String      @id @default(uuid())
+  title       String
+  sku         String      @unique
+  price       Float
+  stock       Int
+  weight      Float?
+  dimensions  String?
+  color       String?
+  size        String?
+  isAvailable Boolean     @default(true)
+  productId   String
+  billItems   BillItem[]
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  product     Product     @relation(fields: [productId], references: [id])
+
+  // Adding an index for sku field as it is unique but also might be frequently queried
+  @@index([productId]) // Index for fetching variants for a specific product
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(uuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  changedBy String
+  createdAt DateTime    @default(now())
+
+  order       Order @relation(fields: [orderId], references: [id])
+  changedUser User  @relation(fields: [changedBy], references: [id])
+
+  @@index([orderId])
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  name        String
+  slug        String     @unique
+  description String?
+  parentId    String?
+  workspaceId Int
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+  products    Product[]
+
+  // Index on workspaceId to speed up queries filtering by workspaceId
+  @@index([workspaceId])
+}
+
+model Order {
+  id                 String               @id @default(uuid())
+  userId             String
+  shippingAddressId  String
+  billingAddressId   String
+  workspaceId        Int
+  paymentMethod      PaymentMethod
+  paymentStatus      PaymentStatus        @default(PENDING)
+  totalAmount        Float
+  status             OrderStatus          @default(PENDING)
+  notes              String?
+  placedAt           DateTime             @default(now())
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  stripeSessionId    String?
+  paidAt             DateTime?
+  paymentDetails     Json?
+  billingAddress     Address              @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  shippingAddress    Address              @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  user               User                 @relation(fields: [userId], references: [id])
+  workspace          Workspace            @relation(fields: [workspaceId], references: [id])
+  items              OrderItem[]
+  OrderStatusHistory OrderStatusHistory[]
+
+  // Indexes to optimize query filtering by workspaceId and order status
+  @@index([workspaceId])
+  @@index([status]) // Index to efficiently query by order status
+}
+
+model OrderItem {
+  id        String         @id @default(uuid())
+  orderId   String
+  variantId String
+  quantity  Int
+  price     Float
+  order     Order          @relation(fields: [orderId], references: [id])
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+}
+
+model Bill {
+  id              String        @id @default(uuid())
+  userId          String?
+  totalAmount     Float
+  paymentMethod   PaymentMethod
+  status          BillStatus    @default(PENDING)
+  createdManually Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User?         @relation(fields: [userId], references: [id])
+  items           BillItem[]
+  isDeleted       Boolean       @default(false)
+}
+
+model BillItem {
+  id        String         @id @default(uuid())
+  billId    String
+  variantId String
+  quantity  Int
+  price     Float
+  bill      Bill           @relation(fields: [billId], references: [id])
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+}
+
+model CartItem {
+  id        String         @id @default(uuid())
+  userId    String
+  variantId String
+  quantity  Int
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id])
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+}
+
+model Address {
+  id             String   @id @default(uuid())
+  userId         String
+  address        String
+  street         String?
+  city           String
+  region         String
+  postalCode     String
+  country        String
+  isDefault      Boolean  @default(false)
+  isDeleted      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id])
+  billingOrders  Order[]  @relation("BillingAddress")
+  shippingOrders Order[]  @relation("ShippingAddress")
+}
+
+model Invitation {
+  id            Int              @id @default(autoincrement())
+  email         String
+  tempPassword  String
+  inviteToken   String           @unique
+  status        InvitationStatus @default(PENDING)
+  role          Role
+  workspaceId   Int
+  invitedById   String
+  invitedUserId String?
+  createdAt     DateTime         @default(now())
+  expiresAt     DateTime
+  acceptedAt    DateTime?
+  invitedBy     User             @relation("InvitedBy", fields: [invitedById], references: [id])
+  invitedUser   User?            @relation("InvitedUser", fields: [invitedUserId], references: [id])
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id])
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  userId      String
+  workspaceId Int
+  title       String
+  message     String
+  type        NotificationType
+  isRead      Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id])
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id])
+
+  // Indexes for fast queries
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([isRead])
+}
+
+model UserRole {
+  id          Int    @id @default(autoincrement())
+  userId      String
+  workspaceId Int?
+  role        Role   @default(ADMIN)
+
+  user      User       @relation(fields: [userId], references: [id])
+  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@unique([userId, workspaceId, role]) // Prevent duplicate role assignments
+  @@index([userId])
+  @@index([workspaceId])
+}
+
+model UserDevice {
+  id          String   @id @default(uuid())
+  userId      String
+  deviceToken String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  STAFF
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum PaymentMethod {
+  MPESA
+  EMOLA
+  CASH
+  STRIPE
+  CREDIT_CARD
+  GOOGLE_PAY
+  APPLE_PAY
+  PAYPAL
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  CANCELLED
+}
+
+enum NotificationType {
+  LOW_STOCK
+  ORDER_UPDATE
+  INVITATION
+  SYSTEM
+  ORDER_PLACED
+  STOCK_TRANSFER
+}
+
+enum BillStatus {
+  PROCESSING
+  PENDING
+  PAID
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}

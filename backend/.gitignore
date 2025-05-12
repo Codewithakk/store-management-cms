@@ -1,0 +1,9 @@
+.env
+node_modules
+dist
+.env.development
+.env.production
+prisma/generated
+seed
+error.log
+test

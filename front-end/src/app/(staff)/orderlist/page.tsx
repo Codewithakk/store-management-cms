@@ -1,0 +1,8 @@
+export default function OrderListPage() {
+  return (
+    <div>
+      <h1>Order List</h1>
+      <p>This is the order list page.</p>
+    </div>
+  );
+}
