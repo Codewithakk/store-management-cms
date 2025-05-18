@@ -34,7 +34,6 @@
 //   newPassword: string;
 // }
 
-
 // export interface AuthResponseData {
 //   accessToken: string;
 //   refreshToken: string;
@@ -53,47 +52,47 @@
 // }
 
 // types/auth.types.ts
-import { Role } from '@prisma/client';
+import { Role } from '@prisma/client'
 
 export interface SignupRequest {
-  firstName: string;
-  lastName?: string;
-  email: string;
-  password: string;
-  phone?: string;
-  role?: Role;
+    firstName: string
+    lastName?: string
+    email: string
+    password: string
+    phone?: string
+    role?: Role
 }
 
 export interface SigninRequest {
-  email: string;
-  password: string;
+    email: string
+    password: string
 }
 
 export interface ResetPasswordRequest {
-  resetToken: string;
-  newPassword: string;
+    resetToken: string
+    newPassword: string
 }
 
 export interface VerifyOtpRequest {
-  otp: string;
+    otp: string
 }
 
 export interface RefreshTokenRequest {
-  refreshToken: string;
+    refreshToken: string
 }
 
 export interface ForgotPasswordRequest {
-  email: string;
+    email: string
 }
 
 export interface SignOptions {
-  algorithm?: string | undefined;
-  expiresIn?: string | number | undefined;
-  notBefore?: string | number | undefined;
-  audience?: string | string[] | undefined;
-  issuer?: string | undefined;
-  subject?: string | undefined;
-  jwtid?: string | undefined;
-  noTimestamp?: boolean | undefined;
-  header?: object | undefined;
+    algorithm?: string | undefined
+    expiresIn?: string | number | undefined
+    notBefore?: string | number | undefined
+    audience?: string | string[] | undefined
+    issuer?: string | undefined
+    subject?: string | undefined
+    jwtid?: string | undefined
+    noTimestamp?: boolean | undefined
+    header?: object | undefined
 }

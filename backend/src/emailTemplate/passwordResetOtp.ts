@@ -1,5 +1,5 @@
 export function generatePasswordResetEmail(user: { firstName: string }, otp: string): string {
-  return `
+    return `
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
       <h2 style="color: #2d3748;">Hi ${user.firstName},</h2>
       <p style="font-size: 16px; color: #4a5568;">
@@ -18,5 +18,5 @@ export function generatePasswordResetEmail(user: { firstName: string }, otp: str
         © ${new Date().getFullYear()} Backey Management. All rights reserved.
       </p>
     </div>
-  `;
+  `
 }

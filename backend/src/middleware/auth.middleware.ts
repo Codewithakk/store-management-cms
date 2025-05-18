@@ -185,69 +185,61 @@
 // };
 
 // src/middlewares/auth.middleware.ts
-import { Response, NextFunction } from 'express';
-import redisClient from '../cache/redisClient';
-import httpError from '../util/httpError';
-import httpResponse from '../util/httpResponse';
-import { AuthRequest } from '../types/types';
-import jwt, { JwtPayload, TokenExpiredError, JsonWebTokenError } from 'jsonwebtoken';
-import { Role } from '@prisma/client';
-import prisma from '../util/prisma';
+import { Response, NextFunction } from 'express'
+import redisClient from '../cache/redisClient'
+import httpError from '../util/httpError'
+import httpResponse from '../util/httpResponse'
+import { AuthRequest } from '../types/types'
+import jwt, { JwtPayload, TokenExpiredError, JsonWebTokenError } from 'jsonwebtoken'
+import { Role } from '@prisma/client'
+import prisma from '../util/prisma'
 
 interface TokenPayload extends JwtPayload {
-    userId: string;
+    userId: string
 }
 
 export const authMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-        const token = req.header('Authorization')?.split(' ')[1];
+        const token = req.header('Authorization')?.split(' ')[1]
         if (!token) {
-            return httpResponse(req, res, 401, 'Access denied. No token provided.', 'NO_TOKEN');
+            return httpResponse(req, res, 401, 'Access denied. No token provided.', 'NO_TOKEN')
         }
 
-        let decoded: TokenPayload;
+        let decoded: TokenPayload
         try {
-            decoded = jwt.verify(token, process.env.JWT_SECRET!) as TokenPayload;
-            console.log(`Token verified for user ${decoded.userId}, expires at: ${new Date((decoded.exp ?? 0) * 1000).toISOString()}`);
+            decoded = jwt.verify(token, process.env.JWT_SECRET!) as TokenPayload
         } catch (error) {
             if (error instanceof TokenExpiredError) {
-                console.log(`Token expired: ${error.message}`);
-                return httpResponse(req, res, 401, 'Token has expired. Please log in again.', 'TOKEN_EXPIRED');
+                return httpResponse(req, res, 401, 'Token has expired. Please log in again.', 'TOKEN_EXPIRED')
             }
             if (error instanceof JsonWebTokenError) {
-                console.log(`Invalid token: ${error.message}`);
-                return httpResponse(req, res, 401, 'Invalid token.', 'TOKEN_INVALID');
+                return httpResponse(req, res, 401, 'Invalid token.', 'TOKEN_INVALID')
             }
-            return httpError(next, error, req, 401);
+            return httpError(next, error, req, 401)
         }
 
         if (!decoded.userId || !decoded.roles) {
-            console.log('Invalid token payload: missing userId or roles');
-            return httpResponse(req, res, 401, 'Invalid token payload.', 'INVALID_PAYLOAD');
+            return httpResponse(req, res, 401, 'Invalid token payload.', 'INVALID_PAYLOAD')
         }
 
         // Verify token in Redis
-        const redisToken = await redisClient.get(`auth:${decoded.userId}`);
+        const redisToken = await redisClient.get(`auth:${decoded.userId}`)
         if (!redisToken) {
-            console.log(`Redis key auth:${decoded.userId} not found or expired`);
-            return httpResponse(req, res, 401, 'Session expired. Please log in again.', 'TOKEN_EXPIRED');
+            return httpResponse(req, res, 401, 'Session expired. Please log in again.', 'TOKEN_EXPIRED')
         }
 
         if (redisToken !== token) {
-            console.log(`Redis token mismatch for user ${decoded.userId}`);
-            return httpResponse(req, res, 401, 'Invalid or mismatched token.', 'TOKEN_MISMATCH');
+            return httpResponse(req, res, 401, 'Invalid or mismatched token.', 'TOKEN_MISMATCH')
         }
 
         // Attach userId and roles (only roles) to the request
         req.user = {
             userId: decoded.userId,
-            roles: decoded.roles,  // Just the roles array
-        };
+            roles: decoded.roles // Just the roles array
+        }
 
-        next();
+        next()
     } catch (error) {
-        console.error('Auth middleware error:', error);
-        return httpError(next, error, req, 401);
+        return httpError(next, error, req, 401)
     }
-};
-
+}

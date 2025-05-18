@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Layout, PackageSearch, Users, Network, X } from 'lucide-react';
+import { Layout, Users, Network, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { Header } from '@/components/header/header';
@@ -67,6 +67,7 @@ export default function AdminLayout({
   const navItems = [
     { name: 'staff', icon: Layout, path: '/staff' },
     { name: 'orderlist', icon: Network, path: '/orderlist' },
+    { name: 'profile', icon: Users, path: '/staffprofile' },
     // { name: 'staff', icon: PackageSearch, path: '/userlist' },
     // { name: 'stock', icon: Users, path: '/stock' },
   ];

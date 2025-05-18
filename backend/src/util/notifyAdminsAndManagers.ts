@@ -94,5 +94,5 @@ export const buildOrderNotificationEmail = (
         </div>
       </body>
     </html>
-    `;
-};
+    `
+}

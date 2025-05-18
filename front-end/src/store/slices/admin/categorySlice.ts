@@ -20,7 +20,6 @@ export const fetchCategories = createAsyncThunk(
     try {
       const response = await categoryAPI.getCategories(workspaceId);
 
-      console.log('response data TO LARGER===>', response);
       return { workspaceId, categories: response.data.categories };
     } catch (error: any) {
       return rejectWithValue(

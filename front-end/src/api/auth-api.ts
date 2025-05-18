@@ -33,12 +33,8 @@ export const authAPI = {
           response.data as EncryptedResponse
         );
         const message = decryptedData.message;
-        console.log('Decrypted Data:', decryptedData);
 
         const { token, refreshToken, user } = decryptedData.data;
-        console.log('Decrypted Token====>:', token);
-        console.log('Decrypted Refresh Token====>:', refreshToken);
-        console.log('Decrypted User=====>:', user);
 
         const workspaceId = user.workspaceId;
 
@@ -75,6 +71,29 @@ export const authAPI = {
         localStorage.setItem('activeRole', activeRole);
 
         return { data: { user, token, message, activeRole } };
+      }
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  // Refresh token
+  refreshToken: async (refreshToken: string) => {
+    try {
+      const payload = encryptPayload({ refreshToken });
+      const response = await axiosInstance.post('/auth/refresh-token', payload);
+
+      if (response.data.iv && response.data.encryptedData) {
+        const decryptedData = decryptResponse<AuthResponse>(
+          response.data as EncryptedResponse
+        );
+        const { token, refreshToken } = decryptedData.data;
+
+        // Update tokens in localStorage
+        localStorage.setItem('token', token);
+        localStorage.setItem('refreshToken', refreshToken);
+
+        return { data: { token, refreshToken } };
       }
     } catch (error) {
       throw error;
@@ -136,9 +155,6 @@ export const authAPI = {
   logout: async () => {
     try {
       localStorage.removeItem('token');
-
-      // Optional: Call backend logout endpoint if you have one
-      // await axiosInstance.post('/auth/logout')
       return { data: { success: true } };
     } catch (error) {
       throw error;

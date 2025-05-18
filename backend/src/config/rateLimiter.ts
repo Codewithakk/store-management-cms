@@ -33,20 +33,20 @@ const POINTS = 10
 const DURATION = 60
 
 export const initRateLimiter = async () => {
-  const pgPool = new Pool({
-    connectionString: config.DATABASE_URL,
-  })
+    const pgPool = new Pool({
+        connectionString: config.DATABASE_URL
+    })
 
-  rateLimiterPostgres = new RateLimiterPostgres({
-    storeClient: pgPool,
-    points: POINTS,
-    duration: DURATION,
-    keyPrefix: 'middleware',
-    tableName: 'rate_limiter',
-  })
+    rateLimiterPostgres = new RateLimiterPostgres({
+        storeClient: pgPool,
+        points: POINTS,
+        duration: DURATION,
+        keyPrefix: 'middleware',
+        tableName: 'rate_limiter'
+    })
 
-  // Optional warm-up
-  await rateLimiterPostgres.block('init', 1, { duration: DURATION })
+    // Optional warm-up
+    await rateLimiterPostgres.block('init', 1, { duration: DURATION })
 }
 
 export { rateLimiterPostgres }

@@ -1,16 +1,16 @@
-import { Role } from '@prisma/client';
+import { Role } from '@prisma/client'
 
 export type WorkspaceInput = {
-  name: string;
-  description?: string;
-  images?: string[];
-  openingTime?: string;
-  closingTime?: string;
-  isActive?: boolean;
-};
+    name: string
+    description?: string
+    images?: string[]
+    openingTime?: string
+    closingTime?: string
+    isActive?: boolean
+}
 
 export interface InviteData {
-  email: string;
-  role: Role;
-  workspaceId: number;
+    email: string
+    role: Role
+    workspaceId: number
 }

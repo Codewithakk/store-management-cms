@@ -1,19 +1,16 @@
-import { PrismaClient, OrderStatus, PaymentMethod, Role, Address, NotificationType } from '@prisma/client';
-import { generatePDF } from '../util/pdfGenerator'; // Assumed utility
-import { sendNotification } from '../util/notification'; // Assumed utility
-import { exportToCSV } from '../util/exportCsv'; // Assumed utility
-import { checkPermission } from '../util/checkPermission';
-import sendEmail from '../util/sendEmail';
-import logger from '../util/logger';
-import { buildOrderNotificationEmail } from '../util/notifyAdminsAndManagers';
-import { log } from 'console';
-import Stripe from 'stripe';
-import { revertStock } from '../helper/revertStock';
-import { generateOrderConfirmationEmail } from '../emailTemplate/order';
-import { generatePdfFromHtml } from '../util/pdfGeneratorOrder';
-import { calculateTotalAmount } from '../util/billing';
+import { PrismaClient, OrderStatus, PaymentMethod, Role, NotificationType, Address, Order, Prisma } from '@prisma/client'
+import { generatePDF } from '../util/pdfGenerator' // Assumed utility
+import { exportToCSV } from '../util/exportCsv' // Assumed utility
+// import { checkPermission } from '../util/checkPermission'
+import sendEmail from '../util/sendEmail'
+import logger from '../util/logger'
+import Stripe from 'stripe'
+import { revertStock } from '../helper/revertStock'
+import { generateOrderConfirmationEmail } from '../emailTemplate/order'
+import { calculateTotalAmount } from '../util/billing'
+import { OrderAddress, OrderPreviewItem } from '../types/order/types'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 // export const createOrder = async (
 //   workspaceId: number,
 //   data: {
@@ -243,15 +240,15 @@ const prisma = new PrismaClient();
 
 export const createOrder = async (
   data: {
-    userId: string;
-    shippingAddressId?: string;
-    billingAddressId?: string;
-    shippingAddress?: any;
-    billingAddress?: any;
-    paymentMethod: PaymentMethod;
-    items: { variantId: string; quantity: number }[];
-    notes?: string;
-    status?: OrderStatus;
+    userId: string
+    shippingAddressId?: string
+    billingAddressId?: string
+    shippingAddress?: Address
+    billingAddress?: Address
+    paymentMethod: PaymentMethod
+    items: { variantId: string; quantity: number }[]
+    notes?: string
+    status?: OrderStatus
   },
   authUserId: string
 ) => {
@@ -260,81 +257,106 @@ export const createOrder = async (
     const [user, variants] = await Promise.all([
       prisma.user.findUniqueOrThrow({
         where: { id: data.userId },
-        select: { id: true, email: true, firstName: true, lastName: true },
+        select: { id: true, email: true, firstName: true, lastName: true }
       }),
       prisma.productVariant.findMany({
-        where: { id: { in: data.items.map(i => i.variantId) } },
+        where: { id: { in: data.items.map((i) => i.variantId) } },
         select: {
           id: true,
           stock: true,
           price: true,
           title: true,
-          product: { select: { id: true, name: true, workspaceId: true } },
-        },
-      }),
-    ]);
+          product: { select: { id: true, name: true, workspaceId: true } }
+        }
+      })
+    ])
+    if (!data.shippingAddressId && !data.shippingAddress) {
+      throw new Error('Shipping address ID or full shipping address is required.')
+    }
+    if (!data.billingAddressId && !data.billingAddress) {
+      throw new Error('Billing address ID or full billing address is required.')
+    }
 
     // Ensure all variants exist and belong to the same workspace
     if (variants.length !== data.items.length) {
-      throw new Error("Some product variants were not found.");
+      throw new Error('Some product variants were not found.')
     }
 
-    const workspaceIds = new Set(variants.map(v => v.product.workspaceId));
+    const workspaceIds = new Set(variants.map((v) => v.product.workspaceId))
     if (workspaceIds.size > 1) {
-      throw new Error("All items must be from the same workspace.");
+      throw new Error('All items must be from the same workspace.')
     }
 
-    const workspaceId = Array.from(workspaceIds)[0];
+    const workspaceId = Array.from(workspaceIds)[0]
     const workspace = await prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { id: true, name: true },
-    });
+      select: { id: true, name: true }
+    })
 
     // Address handling
-    let finalShippingAddressId = data.shippingAddressId;
-    let finalBillingAddressId = data.billingAddressId;
+    let finalShippingAddressId = data.shippingAddressId
+    let finalBillingAddressId = data.billingAddressId
 
-    const addressPromises: Promise<any>[] = [];
     if (!finalShippingAddressId && data.shippingAddress) {
-      addressPromises.push(
-        prisma.address.create({
-          data: { ...data.shippingAddress, userId: data.userId },
-        }).then(created => finalShippingAddressId = created.id)
-      );
+      const createdShippingAddress = await prisma.address.create({
+        data: { ...data.shippingAddress, userId: data.userId }
+      })
+      finalShippingAddressId = createdShippingAddress.id
     }
-    if (!finalBillingAddressId && data.billingAddress) {
-      addressPromises.push(
-        prisma.address.create({
-          data: { ...data.billingAddress, userId: data.userId },
-        }).then(created => finalBillingAddressId = created.id)
-      );
-    }
-    await Promise.all(addressPromises);
 
-    // Address validation
+    if (!finalBillingAddressId && data.billingAddress) {
+      const createdBillingAddress = await prisma.address.create({
+        data: { ...data.billingAddress, userId: data.userId }
+      })
+      finalBillingAddressId = createdBillingAddress.id
+    }
+
+
+    // // Address validation
+    // if (finalShippingAddressId || finalBillingAddressId) {
+    //   const idsToCheck = [finalShippingAddressId, finalBillingAddressId].filter(Boolean) as string[]
+    //   const found = await prisma.address.findMany({ where: { id: { in: idsToCheck } } })
+    //   if (found.length !== idsToCheck.length) {
+    //     throw new Error('Invalid shipping or billing address.')
+    //   }
+    // }
+    // Validate existing address IDs
     if (finalShippingAddressId || finalBillingAddressId) {
-      const idsToCheck = [finalShippingAddressId, finalBillingAddressId].filter(Boolean) as string[];
-      const found = await prisma.address.findMany({ where: { id: { in: idsToCheck } } });
-      if (found.length !== idsToCheck.length) {
-        throw new Error("Invalid shipping or billing address.");
+      const idsToCheck = [finalShippingAddressId, finalBillingAddressId].filter(Boolean) as string[]
+      const addresses = await prisma.address.findMany({
+        where: {
+          id: { in: idsToCheck },
+          userId: data.userId, // Ensure the addresses belong to the same user
+          isDeleted: false // Optional: skip deleted addresses
+        }
+      })
+
+      const foundIds = new Set(addresses.map((a) => a.id))
+
+      if (finalShippingAddressId && !foundIds.has(finalShippingAddressId)) {
+        throw new Error('Invalid or unauthorized shipping address.')
+      }
+
+      if (finalBillingAddressId && !foundIds.has(finalBillingAddressId)) {
+        throw new Error('Invalid or unauthorized billing address.')
       }
     }
 
     // Stock checks
-    const variantMap = new Map(variants.map(v => [v.id, v]));
-    const stockErrors: string[] = [];
+    const variantMap = new Map(variants.map((v) => [v.id, v]))
+    const stockErrors: string[] = []
 
     for (const item of data.items) {
-      const variant = variantMap.get(item.variantId);
+      const variant = variantMap.get(item.variantId)
       if (item.quantity > variant!.stock) {
-        stockErrors.push(`Insufficient stock for ${variant!.product.name} (${variant!.title})`);
+        stockErrors.push(`Insufficient stock for ${variant!.product.name} (${variant!.title})`)
       }
     }
-    if (stockErrors.length) throw new Error(stockErrors.join(", "));
+    if (stockErrors.length) throw new Error(stockErrors.join(', '))
     const totalAmount = calculateTotalAmount(
       data.items,
-      data.items.map(item => variantMap.get(item.variantId)!)
-    );
+      data.items.map((item) => variantMap.get(item.variantId)!)
+    )
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
@@ -349,34 +371,34 @@ export const createOrder = async (
           notes: data.notes,
           items: {
             createMany: {
-              data: data.items.map(item => ({
+              data: data.items.map((item) => ({
                 variantId: item.variantId,
                 quantity: item.quantity,
-                price: variantMap.get(item.variantId)!.price,
-              })),
-            },
-          },
+                price: variantMap.get(item.variantId)!.price
+              }))
+            }
+          }
         },
         include: {
           items: {
             include: {
-              variant: { include: { product: { select: { name: true } } } },
-            },
+              variant: { include: { product: { select: { name: true } } } }
+            }
           },
           shippingAddress: true,
-          billingAddress: true,
-        },
-      });
+          billingAddress: true
+        }
+      })
 
       if (data.paymentMethod === 'CASH' || data.status === 'PROCESSING') {
         await Promise.all(
-          data.items.map(item =>
+          data.items.map((item) =>
             tx.productVariant.update({
               where: { id: item.variantId },
-              data: { stock: { decrement: item.quantity } },
+              data: { stock: { decrement: item.quantity } }
             })
           )
-        );
+        )
       }
 
       await tx.orderStatusHistory.create({
@@ -385,12 +407,12 @@ export const createOrder = async (
           status: OrderStatus.PROCESSING,
           note: 'Order placed by user',
           changedBy: authUserId,
-          createdAt: new Date(),
-        },
-      });
+          createdAt: new Date()
+        }
+      })
 
-      return newOrder;
-    });
+      return newOrder
+    })
 
     await prisma.notification.create({
       data: {
@@ -398,40 +420,47 @@ export const createOrder = async (
         workspaceId,
         title: 'New Order',
         type: NotificationType.ORDER_UPDATE,
-        message: `Order #${order.id} placed`,
-      },
-    });
+        message: `Order #${order.id} placed`
+      }
+    })
 
     // Fetch recipients
     const recipients = await prisma.user.findMany({
       where: {
-        UserRole: { some: { workspaceId, role: { in: [Role.ADMIN, Role.MANAGER, Role.CUSTOMER] } } },
+        UserRole: { some: { workspaceId, role: { in: [Role.ADMIN, Role.MANAGER, Role.CUSTOMER] } } }
       },
-      select: { id: true, email: true, firstName: true, lastName: true },
-    });
+      select: { id: true, email: true, firstName: true, lastName: true }
+    })
 
-    const formatAddress = (address: { address: string; street?: string | null; city: string; region: string; postalCode: string; country: string }) =>
-      `${address.address}${address.street ? `, ${address.street}` : ''}, ${address.city}, ${address.region}, ${address.postalCode}, ${address.country}`;
+    const formatAddress = (address: {
+      address: string
+      street?: string | null
+      city: string
+      region: string
+      postalCode: string
+      country: string
+    }) =>
+      `${address.address}${address.street ? `, ${address.street}` : ''}, ${address.city}, ${address.region}, ${address.postalCode}, ${address.country}`
 
     // Generate HTML email content
-    const itemsList = order.items.map(item => ({
+    const itemsList = order.items.map((item) => ({
       name: `${item.variant.product.name} (${item.variant.title})`,
       quantity: item.quantity,
       price: item.price,
-      total: (item.quantity * item.price).toFixed(2),
-    }));
+      total: (item.quantity * item.price).toFixed(2)
+    }))
 
     // Generate the base email HTML
     const emailTemplate = generateOrderConfirmationEmail({
       order,
       user: {
         ...user,
-        lastName: user.lastName ?? undefined,
+        lastName: user.lastName ?? undefined
       },
       workspace,
       itemsList,
-      formatAddress,
-    });
+      formatAddress
+    })
 
     // Generate PDF from HTML template
     const pdfBuffer = await generatePDF({
@@ -441,12 +470,12 @@ export const createOrder = async (
       status: order.status,
       shippingAddress: formatAddress(order.shippingAddress),
       billingAddress: formatAddress(order.billingAddress),
-      items: order.items.map(item => ({
+      items: order.items.map((item) => ({
         variant: `${item.variant.product.name} (${item.variant.title})`,
         quantity: item.quantity,
-        price: item.price,
-      })),
-    });
+        price: item.price
+      }))
+    })
     const orderTemplate = `
   <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
     <h2>🧾 New Order Received</h2>
@@ -465,30 +494,27 @@ export const createOrder = async (
 
     <p>Thank you,<br/>${workspace.name} Team</p>
   </div>
-`;
+`
 
     // Send emails concurrently to internal recipients
     const emailPromises = recipients
-      .filter(r => r.email)
-      .map(r =>
+      .filter((r) => r.email)
+      .map((r) =>
         sendEmail({
           to: r.email,
           subject: `🧾 New Order: ${workspace.name} (Order ID: ${order.id})`,
           html: orderTemplate,
           pdfBuffer,
-          attachmentName: `Order-${order.id}.pdf`,
-        }).catch(err => {
-          console.error(`Failed to send email to ${r.email}:`, err);
-          return null;
+          attachmentName: `Order-${order.id}.pdf`
+        }).catch((err) => {
+          logger.error(`Failed to send email to ${r.email}:`, err)
+          return null
         })
-      );
+      )
 
     // Send email to customer with a personalized heading
     if (user.email) {
-      const customerTemplate = emailTemplate.replace(
-        'New Order Confirmation',
-        `Thank You for Your Order, ${user.firstName}!`
-      );
+      const customerTemplate = emailTemplate.replace('New Order Confirmation', `Thank You for Your Order, ${user.firstName}!`)
 
       emailPromises.push(
         sendEmail({
@@ -496,188 +522,142 @@ export const createOrder = async (
           subject: `🧾 Your Order Receipt: ${workspace.name} (Order ID: ${order.id})`,
           html: customerTemplate,
           pdfBuffer,
-          attachmentName: `Order-${order.id}.pdf`,
-        }).catch(err => {
-          console.error(`Failed to send email to customer ${user.email}:`, err);
-          return null;
+          attachmentName: `Order-${order.id}.pdf`
+        }).catch((err) => {
+          logger.error(`Failed to send email to customer ${user.email}:`, err)
+          return null
         })
-      );
+      )
     } else {
-      console.warn(`No email sent to customer: user.email is missing for user ${user.id}`);
+      logger.warn(`No email sent to customer: user.email is missing for user ${user.id}`)
     }
-    await Promise.all(emailPromises);
+    await Promise.all(emailPromises)
 
     return {
       orderId: order.id,
       totalAmount: order.totalAmount,
       status: order.status,
       itemCount: order.items.length,
-      message: data.status === 'PENDING' ? 'Order created pending payment' : 'Order placed successfully',
-    };
-  } catch (error: any) {
-    console.error('CreateOrder Error:', error);
-    throw new Error(`Failed to create order: ${error.message}`);
+      message: data.status === 'PENDING' ? 'Order created pending payment' : 'Order placed successfully'
+    }
+  } catch (error) {
+    logger.error('CreateOrder Error:', error)
+    throw new Error(`Failed to create order: ${error}`)
   }
-};
+}
 export const getOrders = async (workspaceId: number, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS');
   return prisma.order.findMany({
     where: { workspaceId },
-    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true },
-  });
-};
+    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true }
+  })
+}
 
-
-export const cancelOrder = async (
-  orderId: string,
-  authUserId: string
-) => {
-  let order: any;
-  let updatedOrder: any;
+export const cancelOrder = async (orderId: string, authUserId: string) => {
+  let order: Prisma.OrderGetPayload<{ include: { items: true; user: true } }> | null
+  let updatedOrder: Order
 
   const result = await prisma.$transaction(async (tx) => {
     order = await tx.order.findUnique({
       where: { id: orderId },
       include: {
         items: true,
-        user: true,
-      },
-    });
-
-    if (!order) throw new Error('Order not found');
-    if (order.status === 'CANCELLED') throw new Error('Order already cancelled');
+        user: true
+      }
+    })
+    if (!order) throw new Error('Order not found')
+    if (order.userId !== authUserId) throw new Error('Unauthorized to cancel this order')
+    if (order.status === OrderStatus.CANCELLED) throw new Error('Order already cancelled')
 
     updatedOrder = await tx.order.update({
       where: { id: orderId },
-      data: { status: 'CANCELLED' },
-    });
+      data: { status: OrderStatus.CANCELLED }
+    })
 
     await tx.orderStatusHistory.create({
       data: {
         orderId: updatedOrder.id,
-        status: 'CANCELLED',
+        status: OrderStatus.CANCELLED,
         note: 'Order CANCELLED',
         changedBy: authUserId,
-        createdAt: new Date(),
-      },
-    });
-    await revertStock(order.items, tx);
+        createdAt: new Date()
+      }
+    })
+    await revertStock(order.items, tx)
     await tx.notification.create({
       data: {
         userId: authUserId,
         title: 'Order Cancelled',
         workspaceId: order.workspaceId,
         type: NotificationType.ORDER_UPDATE,
-        message: `Order #${orderId} has been cancelled`,
-      },
-    });
+        message: `Order #${orderId} has been cancelled`
+      }
+    })
 
     return {
       message: `Order #${orderId} successfully cancelled.`,
       status: updatedOrder.status,
-      userEmail: order.user.email, // Pass for later use
-    };
-  });
+      userEmail: order.user.email // Pass for later use
+    }
+  })
 
   // Send email OUTSIDE transaction
   sendEmail({
     to: result.userEmail,
     subject: 'Order Cancelled',
-    html: `<p>Your order #${orderId} has been cancelled.</p><p>For any queries, please contact support.</p>`,
+    html: `<p>Your order #${orderId} has been cancelled.</p><p>For any queries, please contact support.</p>`
   }).catch((err) => {
-    console.error(`Failed to send cancellation email for order ${orderId}:`, err);
-  });
+    logger.error(`Failed to send cancellation email for order ${orderId}:`, err)
+  })
 
   // Strip userEmail before returning
-  const { userEmail, ...cleanResult } = result;
-  return cleanResult;
-};
+  const { ...cleanResult } = result
+  return cleanResult
+}
 
 export const getOrder = async (workspaceId: number, orderId: string, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS');
+  // await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS')
   const order = await prisma.order.findUnique({
     where: { id: orderId, workspaceId },
-    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true },
-  });
-  if (!order) throw new Error('Order not found');
-  return order;
-};
+    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true }
+  })
+  if (!order) throw new Error('Order not found')
+  return order
+}
 
-export const getOrdersAddress = async (
-  status: OrderStatus,
-  authUserId: string
-) => {
-  const orders = await prisma.order.findMany({
+export const getOrdersAddress = async (authUserId: string): Promise<OrderAddress[]> => {
+  const addresses = await prisma.address.findMany({
     where: {
-      status,
       userId: authUserId,
+      isDeleted: false
     },
     select: {
-      shippingAddress: {
-        select: {
-          id: true,
-          address: true,
-          street: true,
-          city: true,
-          region: true,
-          postalCode: true,
-          country: true,
-          isDeleted: true, // 👈 Include soft-delete status
-        },
-      },
-      billingAddress: {
-        select: {
-          id: true,
-          address: true,
-          street: true,
-          city: true,
-          region: true,
-          postalCode: true,
-          country: true,
-          isDeleted: true, // 👈 Include soft-delete status
-        },
-      },
-    },
-  });
-
-  const uniqueAddresses = new Map<string, any>();
-
-  for (const { shippingAddress, billingAddress } of orders) {
-    if (
-      shippingAddress &&
-      !shippingAddress.isDeleted &&
-      !uniqueAddresses.has(shippingAddress.id)
-    ) {
-      uniqueAddresses.set(shippingAddress.id, shippingAddress);
+      id: true,
+      address: true,
+      street: true,
+      city: true,
+      region: true,
+      postalCode: true,
+      country: true,
+      isDeleted: true
     }
+  })
 
-    if (
-      billingAddress &&
-      !billingAddress.isDeleted &&
-      !uniqueAddresses.has(billingAddress.id)
-    ) {
-      uniqueAddresses.set(billingAddress.id, billingAddress);
-    }
-  }
-
-
-  return Array.from(uniqueAddresses.values());
-};
-
-export const getOrderPreview = async (items: any[], userId: string) => {
+  return addresses
+}
+export const getOrderPreview = async (items: OrderPreviewItem[]) => {
   const variants = await prisma.productVariant.findMany({
     where: {
       id: {
-        in: items.map((item) => String(item.variantId)), // Convert to string
-      },
+        in: items.map((item) => String(item.variantId))
+      }
     },
     include: {
-      product: true,
-    },
-  });
+      product: true
+    }
+  })
 
-  const lineItems = variants.map(v => {
-    const quantity = items.find(i => i.variantId === v.id)?.quantity || 1;
+  const lineItems = variants.map((v) => {
+    const quantity = items.find((i) => i.variantId === v.id)?.quantity || 1
     return {
       price_data: {
         currency: 'usd',
@@ -687,71 +667,74 @@ export const getOrderPreview = async (items: any[], userId: string) => {
         unit_amount: Math.round(v.price * 100)
       },
       quantity
-    };
-  });
+    }
+  })
 
-  return { lineItems };
-};
+  return { lineItems }
+}
 
 export const createFinalOrderFromSession = async (session: Stripe.Checkout.Session) => {
   if (!session.metadata) {
-    throw new Error('Session metadata is missing');
+    throw new Error('Session metadata is missing')
   }
-  const userId = session.metadata.userId;
-  const items = JSON.parse(session.metadata.items);
-  const shippingAddress = JSON.parse(session.metadata.shippingAddress);
-  const billingAddress = JSON.parse(session.metadata.billingAddress);
+  const userId = session.metadata.userId
+  const items = JSON.parse(session.metadata.items)
+  const shippingAddress = JSON.parse(session.metadata.shippingAddress)
+  const billingAddress = JSON.parse(session.metadata.billingAddress)
 
   // Save addresses
   const [shipping, billing] = await Promise.all([
     prisma.address.create({ data: { ...shippingAddress, userId } }),
     prisma.address.create({ data: { ...billingAddress, userId } })
-  ]);
+  ])
 
   // Reuse your existing order creation logic
-  return createOrder({
-    userId,
-    shippingAddressId: shipping.id,
-    billingAddressId: billing.id,
-    paymentMethod: PaymentMethod.STRIPE,
-    items,
-  }, userId);
-};
+  return createOrder(
+    {
+      userId,
+      shippingAddressId: shipping.id,
+      billingAddressId: billing.id,
+      paymentMethod: PaymentMethod.STRIPE,
+      items
+    },
+    userId
+  )
+}
 
 export const updateOrder = async (
   workspaceId: number,
   orderId: string,
   data: {
-    shippingAddressId?: string;
-    billingAddressId?: string;
-    paymentMethod?: PaymentMethod;
-    notes?: string;
+    shippingAddressId?: string
+    billingAddressId?: string
+    paymentMethod?: PaymentMethod
+    notes?: string
   },
   authUserId: string
 ) => {
   // 🛡️ Permission check
-  await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER');
+  // await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER')
 
   // 🧾 Validate order existence
   const order = await prisma.order.findUnique({
-    where: { id: orderId, workspaceId },
-  });
-  if (!order) throw new Error('Order not found');
+    where: { id: orderId, workspaceId }
+  })
+  if (!order) throw new Error('Order not found')
 
-  const updateData: Partial<typeof data> = {};
-  if (data.shippingAddressId) updateData.shippingAddressId = data.shippingAddressId;
-  if (data.billingAddressId) updateData.billingAddressId = data.billingAddressId;
-  if (data.paymentMethod) updateData.paymentMethod = data.paymentMethod;
-  if (data.notes !== undefined) updateData.notes = data.notes;
+  const updateData: Partial<typeof data> = {}
+  if (data.shippingAddressId) updateData.shippingAddressId = data.shippingAddressId
+  if (data.billingAddressId) updateData.billingAddressId = data.billingAddressId
+  if (data.paymentMethod) updateData.paymentMethod = data.paymentMethod
+  if (data.notes !== undefined) updateData.notes = data.notes
   if (data.paymentMethod) {
     if (!Object.values(PaymentMethod).includes(data.paymentMethod)) {
-      throw new Error('Invalid payment method');
+      throw new Error('Invalid payment method')
     }
-    updateData.paymentMethod = data.paymentMethod;
+    updateData.paymentMethod = data.paymentMethod
   }
   // 🚫 No fields to update
   if (Object.keys(updateData).length === 0) {
-    throw new Error('No valid fields provided for update');
+    throw new Error('No valid fields provided for update')
   }
 
   // 🛠️ Perform update
@@ -762,32 +745,30 @@ export const updateOrder = async (
       items: true,
       user: true,
       shippingAddress: true,
-      billingAddress: true,
-    },
-  });
-};
-
+      billingAddress: true
+    }
+  })
+}
 
 export const deleteOrder = async (workspaceId: number, orderId: string, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'DELETE_ORDER');
-  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } });
-  if (!order) throw new Error('Order not found');
+  // await checkPermission(workspaceId, authUserId, 'DELETE_ORDER')
+  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } })
+  if (!order) throw new Error('Order not found')
 
-  await prisma.order.delete({ where: { id: orderId } });
-};
+  await prisma.order.delete({ where: { id: orderId } })
+}
 
 export const addOrderItem = async (
   workspaceId: number,
   orderId: string,
-  data: { variantId: string; quantity: number; price: number },
-  authUserId: string
+  data: { variantId: string; quantity: number; price: number }
 ) => {
   // await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER');
-  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } });
-  if (!order) throw new Error('Order not found');
+  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } })
+  if (!order) throw new Error('Order not found')
 
-  const variant = await prisma.productVariant.findUnique({ where: { id: data.variantId } });
-  if (!variant || variant.stock < data.quantity) throw new Error('Invalid variant or insufficient stock');
+  const variant = await prisma.productVariant.findUnique({ where: { id: data.variantId } })
+  if (!variant || variant.stock < data.quantity) throw new Error('Invalid variant or insufficient stock')
 
   return prisma.$transaction(async (tx) => {
     const orderItem = await tx.orderItem.create({
@@ -795,23 +776,23 @@ export const addOrderItem = async (
         orderId,
         variantId: data.variantId,
         quantity: data.quantity,
-        price: data.price,
-      },
-    });
+        price: data.price
+      }
+    })
 
     await tx.productVariant.update({
       where: { id: data.variantId },
-      data: { stock: { decrement: data.quantity } },
-    });
+      data: { stock: { decrement: data.quantity } }
+    })
 
     await tx.order.update({
       where: { id: orderId },
-      data: { totalAmount: { increment: data.quantity * data.price } },
-    });
+      data: { totalAmount: { increment: data.quantity * data.price } }
+    })
 
-    return orderItem;
-  });
-};
+    return orderItem
+  })
+}
 
 export const getAllOrderItems = async (workspaceId: number, authUserId: string) => {
   // await checkPermission(workspaceId, authUserId, 'VIEW_ORDER');
@@ -819,141 +800,127 @@ export const getAllOrderItems = async (workspaceId: number, authUserId: string) 
   return await prisma.orderItem.findMany({
     where: {
       order: {
-        workspaceId,
-      },
+        workspaceId
+      }
     },
     include: {
       order: {
         select: {
           id: true,
           status: true,
-          userId: true,
-        },
+          userId: true
+        }
       },
       variant: {
         include: {
-          product: true,
-        },
-      },
-    },
-  });
-};
-
+          product: true
+        }
+      }
+    }
+  })
+}
 
 export const removeOrderItem = async (workspaceId: number, orderId: string, itemId: string, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER');
-  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } });
-  if (!order) throw new Error('Order not found');
+  // await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER')
+  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } })
+  if (!order) throw new Error('Order not found')
 
-  const orderItem = await prisma.orderItem.findUnique({ where: { id: itemId, orderId } });
-  if (!orderItem) throw new Error('Order item not found');
+  const orderItem = await prisma.orderItem.findUnique({ where: { id: itemId, orderId } })
+  if (!orderItem) throw new Error('Order item not found')
 
   await prisma.$transaction(async (tx) => {
-    await tx.orderItem.delete({ where: { id: itemId } });
+    await tx.orderItem.delete({ where: { id: itemId } })
     await tx.productVariant.update({
       where: { id: orderItem.variantId },
-      data: { stock: { increment: orderItem.quantity } },
-    });
+      data: { stock: { increment: orderItem.quantity } }
+    })
     await tx.order.update({
       where: { id: orderId },
-      data: { totalAmount: { decrement: orderItem.quantity * orderItem.price } },
-    });
-  });
-};
+      data: { totalAmount: { decrement: orderItem.quantity * orderItem.price } }
+    })
+  })
+}
 
-export const updateOrderStatus = async (
-  workspaceId: number,
-  orderId: string,
-  status: OrderStatus,
-  authUserId: string,
-  note?: string
-) => {
-  await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER_STATUS');
+export const updateOrderStatus = async (workspaceId: number, orderId: string, status: OrderStatus, authUserId: string, note?: string) => {
+  // await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER_STATUS')
 
   const order = await prisma.order.findUnique({
     where: { id: orderId, workspaceId },
-    select: { id: true, status: true },
-  });
+    select: { id: true, status: true }
+  })
 
-  if (!order) throw new Error('Order not found');
+  if (!order) throw new Error('Order not found')
 
   if (order.status === status) {
-    throw new Error('Order is already in the specified status.');
+    throw new Error('Order is already in the specified status.')
   }
 
   // Start a transaction to ensure both update and history insert happen together
   const [updatedOrder] = await prisma.$transaction([
     prisma.order.update({
       where: { id: orderId },
-      data: { status },
+      data: { status }
     }),
     prisma.orderStatusHistory.create({
       data: {
         orderId,
         status,
         note,
-        changedBy: authUserId,
-      },
-    }),
-  ]);
+        changedBy: authUserId
+      }
+    })
+  ])
 
   return {
     id: updatedOrder.id,
     status: updatedOrder.status,
-    message: `Order status updated to ${updatedOrder.status}`,
-  };
-};
+    message: `Order status updated to ${updatedOrder.status}`
+  }
+}
 
 export const updatePaymentStatus = async (workspaceId: number, orderId: string, paymentMethod: PaymentMethod, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'UPDATE_PAYMENT_STATUS');
-  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } });
-  if (!order) throw new Error('Order not found');
+  // await checkPermission(workspaceId, authUserId, 'UPDATE_PAYMENT_STATUS')
+  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } })
+  if (!order) throw new Error('Order not found')
 
   return prisma.order.update({
     where: { id: orderId },
     data: { paymentMethod },
-    include: { items: true, user: true, shippingAddress: true, billingAddress: true },
-  });
-};
+    include: { items: true, user: true, shippingAddress: true, billingAddress: true }
+  })
+}
 
-export const getOrdersByStatus = async (
-  status: OrderStatus,
-  authUserId: string
-) => {
+export const getOrdersByStatus = async (status: OrderStatus, authUserId: string) => {
   return prisma.order.findMany({
     where: {
       userId: authUserId,
-      status,
+      status
     },
     include: {
       items: {
-        include: { variant: true },
+        include: { variant: true }
       },
       user: true,
       shippingAddress: true,
-      billingAddress: true,
-    },
-  });
-};
+      billingAddress: true
+    }
+  })
+}
 export const getOrdersByUser = async (userId: string) => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new Error('User not found');
+  const user = await prisma.user.findUnique({ where: { id: userId } })
+  if (!user) throw new Error('User not found')
 
   return prisma.order.findMany({
     where: { userId },
-    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true },
-  });
-};
+    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true }
+  })
+}
 
-export const getOrdersByDateRange = async (
-  start: Date,
-  end: Date,
-  authUserId: string
-) => {
+export const getOrdersByDateRange = async (start: Date, end: Date) => {
   try {
     // Validate dates
     if (start > end) {
-      throw new Error('Start date cannot be after end date');
+      throw new Error('Start date cannot be after end date')
     }
 
     const orders = await prisma.order.findMany({
@@ -994,52 +961,156 @@ export const getOrdersByDateRange = async (
       orderBy: {
         placedAt: 'desc' // Most recent orders first
       }
-    });
-    console.log('Fetched orders:', orders); // Debugging line
+    })
     if (!orders || orders.length === 0) {
-      return []; // Return empty array instead of throwing error
+      return [] // Return empty array instead of throwing error
     }
 
-    return orders;
+    return orders
   } catch (error) {
-    console.error('Error fetching orders by date range:', error);
-    throw error; // Re-throw for global error handler
+    logger.error('Error fetching orders by date range:', error)
+    throw error // Re-throw for global error handler
+  }
+}
+
+export const bulkUpdateOrders = async (workspaceId: number, orderIds: string[], status: OrderStatus, authUserId: string) => {
+  // await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER_STATUS')
+  await prisma.order.updateMany({
+    where: { id: { in: orderIds }, workspaceId },
+    data: { status }
+  })
+}
+
+export const assignDeliveryPartner = async ({ orderId, userId }: { orderId: string; userId: string },
+  workspaceId: number) => {
+  try {
+    // 1. Validate that the order exists in the workspace
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        workspaceId,
+        // assignedTo: false,
+      },
+    });
+
+    if (!order) {
+      return {
+        success: false,
+        message: 'Order not found in this workspace',
+      };
+    }
+
+    // 2. Validate that the user exists and is part of the workspace
+    const user = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      include: {
+        users: {
+          where: { id: userId }, // filters users directly in the relation
+        },
+      },
+    });
+    console.log('User:', user);
+    // 3. Assign the user to the order
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        assignedTo: userId,
+      },
+    });
+
+    // 4. (Optional) Add status history entry
+    await prisma.orderStatusHistory.create({
+      data: {
+        orderId,
+        status: order.status, // existing status remains
+        changedBy: userId, // could also be adminId if preferred
+        note: 'Assigned delivery partner',
+      },
+    });
+
+    return {
+      success: true,
+      message: 'Delivery partner assigned successfully',
+    };
+  } catch (error) {
+    console.error('Service error:', error);
+    return {
+      success: false,
+      message: 'Failed to assign delivery partner',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export const getOrdegetStaffByWorkspace = async (workspaceId: number, authUserId: string) => {
+  try {
+    // Fetch all staff in this workspace
+    const staffRoles = await prisma.userRole.findMany({
+      where: {
+        workspaceId,
+        role: Role.STAFF,
+        // isDeleted: false,
+      },
+      include: {
+        user: {
+          include: {
+            assignedOrders: {
+              where: {
+                status: {
+                  in: ['PENDING', 'PROCESSING'],
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const staffUsers = [];
+
+    for (const role of staffRoles) {
+      const user = role.user;
+
+      // If they have active orders, set isAvailable to false
+      const hasActiveOrder = user.assignedOrders.length > 0;
+
+      if (user.isAvailable === hasActiveOrder) {
+        // Update availability only if it's outdated
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            isAvailable: !hasActiveOrder,
+          },
+        });
+
+        user.isAvailable = !hasActiveOrder; // reflect it in response too
+      }
+
+      staffUsers.push(user);
+    }
+
+    return {
+      success: true,
+      data: staffUsers,
+    };
+  } catch (error) {
+    console.error('Service error:', error);
+    return {
+      success: false,
+      message: 'Failed to fetch staff users',
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 };
 
-export const bulkUpdateOrders = async (workspaceId: number, orderIds: string[], status: OrderStatus, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'UPDATE_ORDER_STATUS');
-  await prisma.order.updateMany({
-    where: { id: { in: orderIds }, workspaceId },
-    data: { status },
-  });
-};
 
-export const assignDeliveryPartner = async (workspaceId: number, orderId: string, deliveryPartnerId: string, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'ASSIGN_DELIVERY');
-  const order = await prisma.order.findUnique({ where: { id: orderId, workspaceId } });
-  if (!order) throw new Error('Order not found');
-
-  const user = await prisma.user.findUnique({ where: { id: deliveryPartnerId } });
-  if (!user) throw new Error('Delivery partner not found');
-
-  // Assuming a custom field or logic for delivery partner assignment
-  return prisma.order.update({
-    where: { id: orderId },
-    data: { notes: `Assigned to delivery partner: ${deliveryPartnerId}` }, // Placeholder
-    include: { items: true, user: true, shippingAddress: true, billingAddress: true },
-  });
-};
-
-export const cloneOrder = async (
-  orderId: string
-) => {
+export const cloneOrder = async (orderId: string) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true },
-  });
+    include: { items: true }
+  })
 
-  if (!order) throw new Error('Order not found');
+  if (!order) throw new Error('Order not found')
 
   // Optional: Add a permission check here if needed, using order.workspaceId
 
@@ -1054,45 +1125,42 @@ export const cloneOrder = async (
         totalAmount: order.totalAmount,
         notes: order.notes,
         items: {
-          create: order.items.map(item => ({
+          create: order.items.map((item) => ({
             variantId: item.variantId,
             quantity: item.quantity,
-            price: item.price,
-          })),
-        },
+            price: item.price
+          }))
+        }
       },
       include: {
         items: true,
         user: true,
         shippingAddress: true,
-        billingAddress: true,
-      },
-    });
+        billingAddress: true
+      }
+    })
 
     await Promise.all(
-      order.items.map(item =>
+      order.items.map((item) =>
         tx.productVariant.update({
           where: { id: item.variantId },
-          data: { stock: { decrement: item.quantity } },
+          data: { stock: { decrement: item.quantity } }
         })
       )
-    );
+    )
 
-    return newOrder;
-  });
-};
+    return newOrder
+  })
+}
 // services/orderService.ts
-export const reorder = async (
-  orderId: string,
-  authUserId: string
-) => {
+export const reorder = async (orderId: string, authUserId: string) => {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: true },
-  });
+    include: { items: true }
+  })
 
   if (!order) {
-    throw new Error('Original order not found');
+    throw new Error('Original order not found')
   }
 
   // Duplicate order using its own workspaceId
@@ -1110,187 +1178,229 @@ export const reorder = async (
         create: order.items.map((item) => ({
           variantId: item.variantId,
           quantity: item.quantity,
-          price: item.price,
-        })),
-      },
+          price: item.price
+        }))
+      }
     },
-    include: { items: true },
-  });
+    include: { items: true }
+  })
 
-  return newOrder;
-};
+  return newOrder
+}
 
-
-export const notifyOrderStatus = async (
-  workspaceId: number,
-  orderId: string,
-  message: string,
-  authUserId: string
-): Promise<void> => {
+export const notifyOrderStatus = async (workspaceId: number, orderId: string, message: string, authUserId: string): Promise<void> => {
   try {
     // Check permission
-    await checkPermission(workspaceId, authUserId, 'NOTIFY_ORDER');
+    // await checkPermission(workspaceId, authUserId, 'NOTIFY_ORDER')
 
     // Fetch order and related user
     const order = await prisma.order.findUnique({
       where: {
         id: orderId,
-        workspaceId,
+        workspaceId
       },
       include: {
-        user: true,
-      },
-    });
+        user: true
+      }
+    })
 
     // If no order found, throw detailed error
     if (!order) {
-      logger.warn(`Order ${orderId} not found in workspace ${workspaceId}`);
-      throw new Error(`Order with ID ${orderId} not found.`);
+      logger.warn(`Order ${orderId} not found in workspace ${workspaceId}`)
+      throw new Error(`Order with ID ${orderId} not found.`)
     }
 
-    const userEmail = order.user?.email;
+    const userEmail = order.user?.email
     if (!userEmail) {
-      logger.error(`User email not found for order ${orderId}`);
-      throw new Error(`Cannot notify user: Email not found.`);
+      logger.error(`User email not found for order ${orderId}`)
+      throw new Error(`Cannot notify user: Email not found.`)
     }
 
-    const emailSubject = `Update on Your Order #${orderId}`;
+    const emailSubject = `Update on Your Order #${orderId}`
     const emailBody = `
       <p>Dear ${order.user.firstName || 'Customer'},</p>
       <p>${message}</p>
       <p>Thank you for choosing us!</p>
       <p>– Team ${workspaceId}</p>
-    `;
+    `
 
     // Send the email
     await sendEmail({
       to: userEmail,
       subject: emailSubject,
-      html: emailBody,
-    });
+      html: emailBody
+    })
 
-    logger.info(`Notification sent for order ${orderId} to ${userEmail}`);
+    logger.info(`Notification sent for order ${orderId} to ${userEmail}`)
   } catch (error) {
-    logger.error(`Failed to notify user for order ${orderId}: ${error}`);
-    throw error;
+    logger.error(`Failed to notify user for order ${orderId}: ${error}`)
+    throw error
   }
-};
+}
 
-export const getOrderHistory = async (
-  workspaceId: number,
-  orderId: string,
-  authUserId: string
-) => {
-  await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS');
+export const getOrderHistory = async (workspaceId: number, orderId: string, authUserId: string) => {
+  // await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS')
 
   const order = await prisma.order.findUnique({
     where: { id: orderId, workspaceId },
-    select: { id: true },
-  });
+    select: { id: true }
+  })
 
-  if (!order) throw new Error('Order not found');
+  if (!order) throw new Error('Order not found')
 
   const history = await prisma.orderStatusHistory.findMany({
     where: { orderId },
     orderBy: { createdAt: 'asc' },
     include: {
       changedUser: {
-        select: { id: true, firstName: true, lastName: true, email: true },
-      },
-    },
-  });
+        select: { id: true, firstName: true, lastName: true, email: true }
+      }
+    }
+  })
 
-  return history.map(entry => ({
+  return history.map((entry) => ({
     timestamp: entry.createdAt,
     status: entry.status,
     changedBy: `${entry.changedUser.firstName} ${entry.changedUser.lastName}`,
-    note: entry.note,
-  }));
-};
+    note: entry.note
+  }))
+}
 
-export const getOrderSummary = async (workspaceId: number, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS');
-
-  const [totalOrders, totalRevenue, statusCounts] = await Promise.all([
-    prisma.order.count({
-      where: { workspaceId }
-    }),
-    prisma.order.aggregate({
+export const getOrdersByWorkspace = async (workspaceId: number, authUserId: string) => {
+  // await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS')
+  try {
+    const orders = await prisma.order.findMany({
       where: { workspaceId },
-      _sum: { totalAmount: true }
-    }),
-    prisma.order.groupBy({
-      by: ['status'],
-      where: { workspaceId },
-      _count: { id: true }
-    })
-  ]);
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        items: {
+          include: {
+            variant: {
+              select: {
+                id: true,
+                title: true,
+                sku: true,
+                price: true,
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        billingAddress: {
+          select: {
+            id: true,
+            address: true,
+            city: true,
+            region: true,
+            postalCode: true,
+            country: true,
+          },
+        },
+        shippingAddress: {
+          select: {
+            id: true,
+            address: true,
+            city: true,
+            region: true,
+            postalCode: true,
+            country: true,
+          },
+        },
+        OrderStatusHistory: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          select: {
+            status: true,
+            note: true,
+            createdAt: true,
+            changedUser: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
 
-  return {
-    totalOrders,
-    totalRevenue: totalRevenue._sum.totalAmount ?? 0, // safer nullish check
-    statusCounts: statusCounts.map(statusGroup => ({
-      status: statusGroup.status,
-      count: statusGroup._count.id
-    }))
-  };
-};
+    return orders;
+  } catch (error) {
+    console.error('Error in OrderService.getOrdersByWorkspace:', error);
+    throw new Error('Failed to retrieve orders for the workspace');
+  }
+}
 
 export const searchOrders = async (workspaceId: number, query: string, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS');
+  // await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS')
   return prisma.order.findMany({
     where: {
       workspaceId,
-      OR: [
-        { id: { contains: query } },
-        { user: { email: { contains: query } } },
-        { notes: { contains: query } },
-      ],
+      OR: [{ id: { contains: query } }, { user: { email: { contains: query } } }, { notes: { contains: query } }]
     },
-    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true },
-  });
-};
+    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true }
+  })
+}
 
 export const exportOrders = async (workspaceId: number, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'EXPORT_ORDERS');
+  // await checkPermission(workspaceId, authUserId, 'EXPORT_ORDERS')
   const orders = await prisma.order.findMany({
     where: { workspaceId },
-    include: { items: { include: { variant: true } }, user: true },
-  });
+    include: { items: { include: { variant: true } }, user: true }
+  })
 
-  const csvData = orders.map(order => ({
+  const csvData = orders.map((order) => ({
     id: order.id,
     userEmail: order.user.email,
     totalAmount: order.totalAmount,
     status: order.status,
     placedAt: order.placedAt.toISOString(),
-    itemCount: order.items.length,
-  }));
+    itemCount: order.items.length
+  }))
 
-  return exportToCSV(csvData);
-};
+  return exportToCSV(csvData)
+}
 
 export const downloadInvoice = async (workspaceId: number, orderId: string, authUserId: string) => {
-  await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS');
+  // await checkPermission(workspaceId, authUserId, 'VIEW_ORDERS')
   const order = await prisma.order.findUnique({
     where: { id: orderId, workspaceId },
-    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true },
-  });
-  if (!order) throw new Error('Order not found');
+    include: { items: { include: { variant: true } }, user: true, shippingAddress: true, billingAddress: true }
+  })
+  if (!order) throw new Error('Order not found')
 
   const pdfData = {
     orderId: order.id,
     userEmail: order.user.email,
     totalAmount: order.totalAmount,
     status: order.status,
-    items: order.items.map(item => ({
+    items: order.items.map((item) => ({
       variant: item.variant.title,
       quantity: item.quantity,
-      price: item.price,
+      price: item.price
     })),
     shippingAddress: order.shippingAddress.address,
-    billingAddress: order.billingAddress.address,
-  };
+    billingAddress: order.billingAddress.address
+  }
 
-  return generatePDF(pdfData);
-};
+  return generatePDF(pdfData)
+}

@@ -6,20 +6,20 @@ import httpError from '../util/httpError'
 import responseMessage from '../constant/responseMessage'
 
 export default (req: Request, _: Response, next: NextFunction) => {
-  if (config.ENV === EApplicationEnvironment.DEVELOPMENT) {
-    return next()
-  }
+    if (config.ENV === EApplicationEnvironment.DEVELOPMENT) {
+        return next()
+    }
 
-  if (rateLimiterPostgres) {
-    rateLimiterPostgres
-      .consume(req.ip as string, 1)
-      .then(() => {
+    if (rateLimiterPostgres) {
+        rateLimiterPostgres
+            .consume(req.ip as string, 1)
+            .then(() => {
+                next()
+            })
+            .catch(() => {
+                httpError(next, new Error(responseMessage.TOO_MANY_REQUESTS), req, 429)
+            })
+    } else {
         next()
-      })
-      .catch(() => {
-        httpError(next, new Error(responseMessage.TOO_MANY_REQUESTS), req, 429)
-      })
-  } else {
-    next()
-  }
+    }
 }

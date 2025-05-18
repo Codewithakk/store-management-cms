@@ -125,11 +125,16 @@ export default function UserProfilePage() {
     }
   }, [profile]);
 
-  // Handle profile form submission
   const handleProfileSubmit = async () => {
     dispatch(clearProfileErrors());
-    await dispatch(updateUserProfile({ userId, profileData: formData }));
-    setIsEditing(false);
+    const resultAction = await dispatch(
+      updateUserProfile({ userId, profileData: formData })
+    );
+
+    if (updateUserProfile.fulfilled.match(resultAction)) {
+      dispatch(fetchUserProfile());
+      setIsEditing(false);
+    }
   };
 
   // Handle new address form submission

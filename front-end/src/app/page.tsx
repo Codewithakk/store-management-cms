@@ -3,13 +3,10 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-import { useSelector } from 'react-redux';
-import { RootState } from '@/store';
 
 export default function Home() {
   const router = useRouter();
   const { user, isLoading } = useAuth();
-  console.log('my check user front end====>', user);
 
   useEffect(() => {
     if (!isLoading) {

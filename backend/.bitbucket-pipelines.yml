@@ -1,0 +1,189 @@
+image: node:20
+
+definitions:
+    caches:
+        node: node_modules/
+    services:
+        postgres:
+            image: postgres:15
+            environment:
+                POSTGRES_DB: backey_db
+                POSTGRES_USER: postgres
+                POSTGRES_PASSWORD: postgres
+
+pipelines:
+    default:
+        - step:
+              name: Install Dependencies
+              caches:
+                  - node
+              services:
+                  - postgres
+              script:
+                  - npm ci
+                  - npx prisma generate
+        - step:
+              name: Lint Code
+              caches:
+                  - node
+              services:
+                  - postgres
+              script:
+                  - npm run lint
+                  - npm run format:check
+        - step:
+              name: Build App
+              caches:
+                  - node
+              services:
+                  - postgres
+              script:
+                  - npm run build
+    branches:
+        main:
+            - step:
+                  name: Install Dependencies
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm ci
+                      - npx prisma generate
+            - step:
+                  name: Build App
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm run build
+            - step:
+                  name: Run Migrations
+                  deployment: production
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - export DATABASE_URL="postgresql://postgres:postgres@postgres:5432/backey_db?schema=public"
+                      - npx prisma migrate deploy
+                      - npm run migrate:prod
+            - step:
+                  name: Deploy to Production
+                  deployment: production
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - echo "Deploying to production..."
+                      # Add deployment commands here (e.g., Heroku, AWS, etc.)
+        master:
+            - step:
+                  name: Install Dependencies
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm ci
+                      - npx prisma generate
+            - step:
+                  name: Build App
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm run build
+            - step:
+                  name: Run Migrations
+                  deployment: production
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - export DATABASE_URL="postgresql://postgres:postgres@postgres:5432/backey_db?schema=public"
+                      - npx prisma migrate deploy
+                      - npm run migrate:prod
+            - step:
+                  name: Deploy to Production
+                  deployment: production
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - echo "Deploying to production..."
+                      # Add deployment commands here
+        production:
+            - step:
+                  name: Install Dependencies
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm ci
+                      - npx prisma generate
+            - step:
+                  name: Build App
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm run build
+            - step:
+                  name: Run Migrations
+                  deployment: production
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - export DATABASE_URL="postgresql://postgres:postgres@postgres:5432/backey_db?schema=public"
+                      - npx prisma migrate deploy
+                      - npm run migrate:prod
+            - step:
+                  name: Deploy to Production
+                  deployment: production
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - echo "Deploying to production..."
+                      # Add deployment commands here
+    pull-requests:
+        '**':
+            - step:
+                  name: Install Dependencies
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm ci
+                      - npx prisma generate
+            - step:
+                  name: Build App
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - npm run build
+            - step:
+                  name: Run Review App
+                  caches:
+                      - node
+                  services:
+                      - postgres
+                  script:
+                      - export DATABASE_URL="postgresql://postgres:postgres@postgres:5432/backey_db?schema=public"
+                      - npm run migrate:dev
+                      - npm run start &
+                      - sleep 10 # Give server time to boot

@@ -1,15 +1,19 @@
-import { Parser } from 'json2csv';
+import { Parser } from 'json2csv'
+import logger from './logger'
 
-export const exportToCSV = (data: any[]): string => {
-  const fields = Object.keys(data[0] || {});
-  const opts = { fields };
+export const exportToCSV = <T extends Record<string, unknown>>(data: T[]): string => {
+    if (data.length === 0) {
+        return ''
+    }
 
-  try {
-    const parser = new Parser(opts);
-    const csv = parser.parse(data);
-    return csv;
-  } catch (error) {
-    console.error('Failed to export to CSV:', error);
-    throw new Error('Failed to export to CSV');
-  }
-};
+    const fields = Object.keys(data[0])
+    const opts = { fields }
+
+    try {
+        const parser = new Parser<T>(opts)
+        return parser.parse(data)
+    } catch (error) {
+        logger.error('Error exporting to CSV', { error })
+        throw new Error(`Failed to export to CSV: ${(error as Error).message}`)
+    }
+}

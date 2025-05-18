@@ -36,7 +36,7 @@ declare module 'express-serve-static-core' {
         user?: {
             userId: string;
             id?: string
-            userEmail: string;
+            email: string;
             // role: Role | null;
             roles: { role: Role; workspaceId: number | null }[]
             permissions?: string[];

@@ -137,7 +137,7 @@ const OrdersPage = () => {
   const workspaceId = useSelector((state: RootState) => state.auth.workspaceId);
 
   const gridRef = useRef<AgGridReact>(null);
-  const [selectedStaffId, setSelectedStaffId] = useState("");
+  const [selectedStaffId, setSelectedStaffId] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
@@ -148,7 +148,9 @@ const OrdersPage = () => {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState('all');
 
-  const { data: staffMembers = [] } = workspaceId ? useStaffMembers(workspaceId) : { data: [] };
+  const { data: staffMembers = [] } = workspaceId
+    ? useStaffMembers(workspaceId)
+    : { data: [] };
 
   // Fetch orders when workspaceId changes or after staff assignment
   const fetchOrders = () => {
@@ -244,14 +246,15 @@ const OrdersPage = () => {
       return <span className="text-gray-400">Not assigned</span>;
     }
 
-    const staffMember = staffMembers.find((staff) => staff.id === assignedStaffId);
-    
+    const staffMember = staffMembers.find(
+      (staff) => staff.id === assignedStaffId
+    );
+
     return (
       <div className="flex items-center">
-        <div className="bg-blue-100 text-blue-800 rounded-full h-6 w-6 flex items-center justify-center mr-2">
-          {staffMember?.firstName.charAt(0)}
+        <div className="flex items-center justify-center mr-2">
+          {staffMember?.email}
         </div>
-        <span>{staffMember?.firstName || 'Unknown'}</span>
       </div>
     );
   };
@@ -410,16 +413,16 @@ const OrdersPage = () => {
           assignStaffToOrder({
             workspaceId,
             orderId: selectedOrder.id,
-            userId: selectedStaffId
+            userId: selectedStaffId,
           })
         ).unwrap();
-        
+
         // Refresh orders after successful assignment
         fetchOrders();
         setIsAssignDialogOpen(false);
-        setSelectedStaffId("");
+        setSelectedStaffId('');
       } catch (error) {
-        console.error("Failed to assign staff:", error);
+        console.error('Failed to assign staff:', error);
       }
     }
   };
@@ -660,18 +663,18 @@ const OrdersPage = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="text-sm">
-                        <p>{selectedOrder.shippingAddress.address}</p>
-                        {selectedOrder.shippingAddress.street && (
-                          <p>{selectedOrder.shippingAddress.street}</p>
+                        <p>{selectedOrder?.shippingAddress?.address}</p>
+                        {selectedOrder?.shippingAddress?.street && (
+                          <p>{selectedOrder?.shippingAddress?.street}</p>
                         )}
                         <p>
-                          {selectedOrder.shippingAddress.city}
-                          {selectedOrder.shippingAddress.region &&
-                            `, ${selectedOrder.shippingAddress.region}`}
-                          {selectedOrder.shippingAddress.postalCode &&
-                            ` ${selectedOrder.shippingAddress.postalCode}`}
+                          {selectedOrder?.shippingAddress?.city}
+                          {selectedOrder?.shippingAddress?.region &&
+                            `, ${selectedOrder?.shippingAddress?.region}`}
+                          {selectedOrder?.shippingAddress?.postalCode &&
+                            ` ${selectedOrder.shippingAddress?.postalCode}`}
                         </p>
-                        <p>{selectedOrder.shippingAddress.country}</p>
+                        <p>{selectedOrder?.shippingAddress?.country}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -684,14 +687,24 @@ const OrdersPage = () => {
                       {selectedOrder.assignedTo ? (
                         <div className="flex items-center">
                           <div className="bg-blue-100 text-blue-800 rounded-full h-8 w-8 flex items-center justify-center mr-2">
-                            {staffMembers.find(s => s.id === selectedOrder.assignedTo)?.firstName.charAt(0)}
+                            {staffMembers
+                              .find((s) => s.id === selectedOrder.assignedTo)
+                              ?.firstName.charAt(0)}
                           </div>
                           <div>
                             <p className="font-medium">
-                              {staffMembers.find(s => s.id === selectedOrder.assignedTo)?.firstName}
+                              {
+                                staffMembers.find(
+                                  (s) => s.id === selectedOrder.assignedTo
+                                )?.firstName
+                              }
                             </p>
                             <p className="text-sm text-gray-500">
-                              {staffMembers.find(s => s.id === selectedOrder.assignedTo)?.email}
+                              {
+                                staffMembers.find(
+                                  (s) => s.id === selectedOrder.assignedTo
+                                )?.email
+                              }
                             </p>
                           </div>
                         </div>
@@ -816,7 +829,7 @@ const OrdersPage = () => {
                 Order #{selectedOrder?.id?.substring(0, 8).toUpperCase()}
               </h4>
 
-              <Select 
+              <Select
                 value={selectedStaffId}
                 onValueChange={setSelectedStaffId}
               >
@@ -844,15 +857,12 @@ const OrdersPage = () => {
               variant="outline"
               onClick={() => {
                 setIsAssignDialogOpen(false);
-                setSelectedStaffId("");
+                setSelectedStaffId('');
               }}
             >
               Cancel
             </Button>
-            <Button 
-              onClick={handleAssignStaff}
-              disabled={!selectedStaffId}
-            >
+            <Button onClick={handleAssignStaff} disabled={!selectedStaffId}>
               Assign Staff
             </Button>
           </DialogFooter>

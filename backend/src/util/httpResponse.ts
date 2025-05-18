@@ -14,14 +14,24 @@ export default (req: Request, res: Response, responseStatusCode: number, respons
             url: req.originalUrl
         },
         message: responseMessage,
-        data: data !== undefined ? data : {},  // Ensure data is never undefined
-        ...(meta !== undefined && { meta }),  // Attach meta if present
+        data: data !== undefined ? data : {}, // Ensure data is never undefined
+        ...(meta != null && { meta }) // true if meta is NOT null or undefined
     }
 
     // Log the response
-    logger.info(`CONTROLLER_RESPONSE`, {
-        meta: response
-    })
+    try {
+        logger.info('CONTROLLER_RESPONSE', {
+            message: response.message,
+            statusCode: response.statusCode,
+            method: response.request.method,
+            url: response.request.url,
+            dataType: typeof data,
+            metaType: typeof meta
+        })
+    } catch (logError) {
+        console.error('Failed to log response:', logError)
+    }
+
 
     // In production environment, remove the IP from the response
     if (config.ENV === EApplicationEnvironment.PRODUCTION) {
@@ -31,4 +41,3 @@ export default (req: Request, res: Response, responseStatusCode: number, respons
     // Send the response
     res.status(responseStatusCode).json(response)
 }
-

@@ -21,6 +21,7 @@ model User {
   phoneVerified       Boolean              @default(false)
   emailVerified       Boolean              @default(false)
   isActive            Boolean              @default(true)
+  isAvailable         Boolean              @default(true)
   profileImageUrl     String?
   lastLogin           DateTime?
   createdAt           DateTime             @default(now())
@@ -40,6 +41,7 @@ model User {
   UserRole            UserRole[]
   UserDevice          UserDevice[]
   isDeleted           Boolean              @default(false)
+  assignedOrders      Order[]              @relation("AssignedOrders")
 
   // Index on email and phone for fast lookup
   @@index([email])
@@ -168,7 +170,7 @@ model OrderStatusHistory {
 model Category {
   id          String     @id @default(uuid())
   name        String
-  slug        String     @unique
+  slug        String
   description String?
   parentId    String?
   workspaceId Int
@@ -179,6 +181,7 @@ model Category {
   workspace   Workspace  @relation(fields: [workspaceId], references: [id])
   products    Product[]
 
+  @@unique([slug, workspaceId])
   // Index on workspaceId to speed up queries filtering by workspaceId
   @@index([workspaceId])
 }
@@ -200,6 +203,8 @@ model Order {
   stripeSessionId    String?
   paidAt             DateTime?
   paymentDetails     Json?
+  assignedTo         String?
+  assignedToUser     User?                @relation("AssignedOrders", fields: [assignedTo], references: [id])
   billingAddress     Address              @relation("BillingAddress", fields: [billingAddressId], references: [id])
   shippingAddress    Address              @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
   user               User                 @relation(fields: [userId], references: [id])
@@ -313,10 +318,11 @@ model Notification {
 }
 
 model UserRole {
-  id          Int    @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   userId      String
   workspaceId Int?
-  role        Role   @default(ADMIN)
+  isDeleted   Boolean @default(false)
+  role        Role    @default(ADMIN)
 
   user      User       @relation(fields: [userId], references: [id])
   workspace Workspace? @relation(fields: [workspaceId], references: [id])
@@ -373,6 +379,7 @@ enum OrderStatus {
   PROCESSING
   DELIVERED
   CANCELLED
+  COMPLETED
 }
 
 enum NotificationType {

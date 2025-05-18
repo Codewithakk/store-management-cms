@@ -1,32 +1,33 @@
-import { InvitationStatus, Prisma, Role } from '@prisma/client';
-import { InviteData, WorkspaceInput } from '../types/workspace.types';
-import prisma from '../util/prisma';
-import { v4 as uuidv4 } from 'uuid';
-import slugify from 'slugify';
-import bcrypt from 'bcryptjs';
-import { SearchParams } from '../types/types';
-import sendEmail from '../util/sendEmail';
-import { sendNotificationToUsers } from '../util/pushNotification';
-import { io } from '../server';
-import { generateInvitationEmailHtml } from '../emailTemplate/invitation';
+import { InvitationStatus, Prisma, Role } from '@prisma/client'
+import { InviteData, WorkspaceInput } from '../types/workspace.types'
+import prisma from '../util/prisma'
+import { v4 as uuidv4 } from 'uuid'
+import slugify from 'slugify'
+import bcrypt from 'bcryptjs'
+import { SearchParams } from '../types/types'
+import sendEmail from '../util/sendEmail'
+import { sendNotificationToUsers } from '../util/pushNotification'
+import { io } from '../server'
+import { generateInvitationEmailHtml } from '../emailTemplate/invitation'
+import logger from '../util/logger'
 
 export const workspaceService = {
   createWorkspace: async (userId: string, data: WorkspaceInput) => {
     // Validate input
     if (!userId || !data.name?.trim()) {
-      throw new Error('User ID and workspace name are required');
+      throw new Error('User ID and workspace name are required')
     }
 
-    const baseName = data.name.trim();
+    const baseName = data.name.trim()
 
     // Check for existing workspace
-    const existing = await prisma.workspace.findUnique({ where: { name: baseName } });
+    const existing = await prisma.workspace.findUnique({ where: { name: baseName } })
     if (existing) {
-      throw new Error(`Workspace "${baseName}" already exists`);
+      throw new Error(`Workspace "${baseName}" already exists`)
     }
 
     // Generate unique slug
-    const slug = `${slugify(baseName, { lower: true })}-${uuidv4().slice(0, 6)}`;
+    const slug = `${slugify(baseName, { lower: true })}-${uuidv4().slice(0, 6)}`
 
     // Create workspace and assign ADMIN role to the creator
     const workspace = await prisma.$transaction(async (tx) => {
@@ -40,42 +41,42 @@ export const workspaceService = {
           closingTime: data.closingTime ?? null,
           isActive: data.isActive ?? true,
           owner: { connect: { id: userId } },
-          users: { connect: { id: userId } }, // Add creator to workspace users
+          users: { connect: { id: userId } } // Add creator to workspace users
         },
         include: {
           owner: {
-            select: { id: true, firstName: true, lastName: true, email: true, UserRole: true },
-          },
-        },
-      });
+            select: { id: true, firstName: true, lastName: true, email: true, UserRole: true }
+          }
+        }
+      })
 
       // Assign ADMIN role to the creator
       await tx.userRole.create({
         data: {
           userId,
           workspaceId: newWorkspace.id,
-          role: Role.ADMIN,
-        },
-      });
+          role: Role.ADMIN
+        }
+      })
 
-      return newWorkspace;
-    });
+      return newWorkspace
+    })
 
-    return workspace;
+    return workspace
   },
 
   createWorkspaceWithAssignRole: async (userId: string, data: WorkspaceInput) => {
     if (!userId || !data.name?.trim()) {
-      throw new Error('User ID and workspace name are required');
+      throw new Error('User ID and workspace name are required')
     }
 
-    const baseName = data.name.trim();
-    const existing = await prisma.workspace.findUnique({ where: { name: baseName } });
+    const baseName = data.name.trim()
+    const existing = await prisma.workspace.findUnique({ where: { name: baseName } })
     if (existing) {
-      throw new Error(`Workspace "${baseName}" already exists`);
+      throw new Error(`Workspace "${baseName}" already exists`)
     }
 
-    const slug = `${slugify(baseName, { lower: true })}-${uuidv4().slice(0, 6)}`;
+    const slug = `${slugify(baseName, { lower: true })}-${uuidv4().slice(0, 6)}`
 
     const workspace = await prisma.$transaction(async (tx) => {
       const newWorkspace = await tx.workspace.create({
@@ -88,27 +89,27 @@ export const workspaceService = {
           closingTime: data.closingTime ?? null,
           isActive: data.isActive ?? true,
           owner: { connect: { id: userId } },
-          users: { connect: { id: userId } },
+          users: { connect: { id: userId } }
         },
         include: {
           owner: {
-            select: { id: true, firstName: true, lastName: true, email: true },
-          },
-        },
-      });
+            select: { id: true, firstName: true, lastName: true, email: true }
+          }
+        }
+      })
 
       await tx.userRole.create({
         data: {
           userId,
           workspaceId: newWorkspace.id,
-          role: Role.ADMIN,
-        },
-      });
+          role: Role.ADMIN
+        }
+      })
 
-      return newWorkspace;
-    });
+      return newWorkspace
+    })
 
-    return workspace;
+    return workspace
   },
 
   getAdminWorkspaces: async (userId: string) => {
@@ -119,9 +120,9 @@ export const workspaceService = {
           UserRole: {
             some: {
               userId,
-              role: Role.ADMIN,
-            },
-          },
+              role: Role.ADMIN
+            }
+          }
         },
         select: {
           id: true,
@@ -133,24 +134,24 @@ export const workspaceService = {
           closingTime: true,
           isActive: true,
           createdAt: true,
-          updatedAt: true,
+          updatedAt: true
         },
         orderBy: {
-          createdAt: 'desc',
-        },
-      });
+          createdAt: 'desc'
+        }
+      })
     } catch (error) {
-      console.error('Error fetching admin workspaces from DB:', error);
-      throw new Error('Failed to fetch admin workspaces');
+      logger.error('Error fetching admin workspaces from DB:', error)
+      throw new Error('Failed to fetch admin workspaces')
     }
   },
 
   getWorkspace: async ({ search, page, limit }: SearchParams) => {
     // Define search filter with isDeleted check
     const where: Prisma.WorkspaceWhereInput = {
-      isDeleted: false,  // Exclude soft deleted workspaces
-      ...(search && { slug: { contains: search, mode: 'insensitive' } }),
-    };
+      isDeleted: false, // Exclude soft deleted workspaces
+      ...(search && { slug: { contains: search, mode: 'insensitive' } })
+    }
 
     // Fetch data with pagination
     const results = await prisma.workspace.findMany({
@@ -166,16 +167,16 @@ export const workspaceService = {
         openingTime: true,
         closingTime: true,
         isActive: true,
-        createdAt: true,
+        createdAt: true
       },
-      orderBy: { createdAt: 'desc' },
-    });
+      orderBy: { createdAt: 'desc' }
+    })
 
     // Prepare response
-    const hasNextPage = results.length > limit;
-    const data = hasNextPage ? results.slice(0, limit) : results;
-    const response = { data, meta: { page, limit, hasNextPage } };
-    return response;
+    const hasNextPage = results.length > limit
+    const data = hasNextPage ? results.slice(0, limit) : results
+    const response = { data, meta: { page, limit, hasNextPage } }
+    return response
   },
 
   updateWorkspace: async (workspaceId: number, userId: string, data: Partial<WorkspaceInput>) => {
@@ -184,12 +185,12 @@ export const workspaceService = {
       where: {
         userId,
         workspaceId,
-        role: Role.ADMIN,
-      },
-    });
+        role: Role.ADMIN
+      }
+    })
 
     if (!userRole) {
-      throw new Error('Unauthorized: Only admins can update this workspace');
+      throw new Error('Unauthorized: Only admins can update this workspace')
     }
 
     const workspace = await prisma.workspace.update({
@@ -201,13 +202,13 @@ export const workspaceService = {
             id: true,
             firstName: true,
             lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
+            email: true
+          }
+        }
+      }
+    })
 
-    return workspace;
+    return workspace
   },
 
   deleteWorkspaces: async (workspaceIds: number[], userId: string) => {
@@ -217,42 +218,42 @@ export const workspaceService = {
         UserRole: {
           some: {
             userId,
-            role: Role.ADMIN,
-          },
-        },
+            role: Role.ADMIN
+          }
+        }
       },
-      select: { id: true },
-    });
+      select: { id: true }
+    })
 
-    const foundIds = workspaces.map(ws => ws.id);
-    const notFoundIds = workspaceIds.filter(id => !foundIds.includes(id));
+    const foundIds = workspaces.map((ws) => ws.id)
+    const notFoundIds = workspaceIds.filter((id) => !foundIds.includes(id))
 
     if (notFoundIds.length > 0) {
-      throw new Error(`Some workspaces not found or not owned by user: ${notFoundIds.join(', ')}`);
+      throw new Error(`Some workspaces not found or not owned by user: ${notFoundIds.join(', ')}`)
     }
 
     // Soft delete instead of actual delete
     await prisma.workspace.updateMany({
       where: {
-        id: { in: foundIds },
+        id: { in: foundIds }
       },
       data: {
         isDeleted: true,
-        isActive: false,
-      },
-    });
+        isActive: false
+      }
+    })
   },
   deleteWorkspaceById: async (workspaceId: number, userId: string): Promise<void> => {
     const userRole = await prisma.userRole.findFirst({
       where: {
         userId,
         workspaceId,
-        role: Role.ADMIN,
-      },
-    });
+        role: Role.ADMIN
+      }
+    })
 
     if (!userRole) {
-      throw new Error('You are not authorized to delete this workspace.');
+      throw new Error('You are not authorized to delete this workspace.')
     }
 
     // Soft delete instead of actual delete
@@ -260,115 +261,173 @@ export const workspaceService = {
       where: { id: workspaceId },
       data: {
         isDeleted: true,
-        isActive: false,
-      },
-    });
+        isActive: false
+      }
+    })
   },
-  removeUserFromWorkspace: async (workspaceId: number, email: string, currentUserId: string): Promise<string> => {
+  // removeUserFromWorkspace: async (workspaceId: number, email: string, currentUserId: string): Promise<string> => {
+  //   const workspace = await prisma.workspace.findUnique({
+  //     where: { id: workspaceId }
+  //   })
+
+  //   if (!workspace) {
+  //     throw new Error('Workspace not found')
+  //   }
+
+  //   const currentUserRole = await prisma.userRole.findFirst({
+  //     where: {
+  //       userId: currentUserId,
+  //       workspaceId,
+  //       role: { in: [Role.ADMIN, Role.MANAGER] }
+  //     }
+  //   })
+
+  //   if (!currentUserRole) {
+  //     throw new Error('Only admins or managers can remove users')
+  //   }
+
+  //   const userToRemove = await prisma.user.findUnique({
+  //     where: { email }
+  //   })
+
+  //   if (!userToRemove) {
+  //     throw new Error('User not found')
+  //   }
+
+  //   // Check if user is associated with the workspace
+  //   const isInWorkspace = await prisma.userRole.findFirst({
+  //     where: {
+  //       userId: userToRemove.id,
+  //       workspaceId
+  //     }
+  //   })
+
+  //   if (!isInWorkspace) {
+  //     throw new Error('User is not a member of this workspace')
+  //   }
+
+  //   // Prevent removing the owner or self
+  //   if (userToRemove.id === workspace.ownerId) {
+  //     throw new Error('Cannot remove the workspace owner')
+  //   }
+  //   if (userToRemove.id === currentUserId) {
+  //     throw new Error('Cannot remove yourself from the workspace')
+  //   }
+
+  //   // Remove the user from the workspace
+  //   await prisma.userRole.deleteMany({
+  //     where: {
+  //       userId: userToRemove.id,
+  //       workspaceId
+  //     }
+  //   })
+
+  //   return `User ${email} has been removed from the workspace`
+  // },
+
+  removeUserFromWorkspace: async (
+    workspaceId: number,
+    email: string,
+    currentUserId: string
+  ): Promise<string> => {
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
+      include: { users: true },
     });
 
-    if (!workspace) {
-      throw new Error('Workspace not found');
-    }
+    if (!workspace) throw new Error('Workspace not found.');
 
     const currentUserRole = await prisma.userRole.findFirst({
       where: {
         userId: currentUserId,
         workspaceId,
         role: { in: [Role.ADMIN, Role.MANAGER] },
+        isDeleted: false,
       },
     });
 
     if (!currentUserRole) {
-      throw new Error('Only admins or managers can remove users');
+      throw new Error('Only admins or managers can remove users.');
     }
 
     const userToRemove = await prisma.user.findUnique({
       where: { email },
     });
 
-    if (!userToRemove) {
-      throw new Error('User not found');
-    }
+    if (!userToRemove) throw new Error('User not found.');
 
-    // Check if user is associated with the workspace
-    const isInWorkspace = await prisma.userRole.findFirst({
-      where: {
-        userId: userToRemove.id,
-        workspaceId,
-      },
-    });
-
-    if (!isInWorkspace) {
-      throw new Error('User is not a member of this workspace');
-    }
-
-    // Prevent removing the owner or self
     if (userToRemove.id === workspace.ownerId) {
-      throw new Error('Cannot remove the workspace owner');
-    }
-    if (userToRemove.id === currentUserId) {
-      throw new Error('Cannot remove yourself from the workspace');
+      throw new Error('Cannot remove the workspace owner.');
     }
 
-    // Remove the user from the workspace
-    await prisma.userRole.deleteMany({
+    if (userToRemove.id === currentUserId) {
+      throw new Error('You cannot remove yourself from the workspace.');
+    }
+
+    const userRole = await prisma.userRole.findMany({
       where: {
         userId: userToRemove.id,
         workspaceId,
+        isDeleted: false,
       },
     });
 
-    return `User ${email} has been removed from the workspace`;
-  },
+    if (userRole.length === 0) {
+      throw new Error('User is not an active member of this workspace.');
+    }
 
-  inviteUserToWorkspace: async (
-    { email, role, workspaceId }: InviteData,
-    invitedById: string
-  ) => {
-    const [
-      workspace,
-      existingInvite,
-      existingUser,
-    ] = await Promise.all([
+    // Soft-delete all their roles in this workspace
+    await prisma.userRole.updateMany({
+      where: {
+        userId: userToRemove.id,
+        workspaceId,
+        isDeleted: false,
+      },
+      data: {
+        isDeleted: true,
+      },
+    });
+
+    return `User ${email} has been marked as removed from workspace #${workspaceId}.`;
+  },
+  inviteUserToWorkspace: async ({ email, role, workspaceId }: InviteData, invitedById: string) => {
+    const [workspace, existingInvite, existingUser] = await Promise.all([
       prisma.workspace.findUnique({
         where: { id: workspaceId },
-        select: { id: true, name: true, ownerId: true },
+        select: { id: true, name: true, ownerId: true }
       }),
       prisma.invitation.findFirst({
-        where: { email, workspaceId, status: 'PENDING' },
+        where: { email, workspaceId, status: 'PENDING' }
       }),
       prisma.user.findUnique({
         where: { email },
-        select: { id: true, firstName: true },
-      }),
-    ]);
+        select: { id: true, firstName: true }
+      })
+    ])
 
     // Validations
-    if (!workspace) throw new Error('Workspace not found');
-    if (workspace.ownerId !== invitedById) throw new Error('Only the workspace owner can invite users');
-    if (existingInvite) throw new Error('Pending invitation already exists for this user');
+    if (!workspace) throw new Error('Workspace not found')
+    if (workspace.ownerId !== invitedById) throw new Error('Only the workspace owner can invite users')
+    if (existingInvite) throw new Error('Pending invitation already exists for this user')
 
     // Check if user already in workspace (only if user exists)
     if (existingUser) {
       const isInWorkspace = await prisma.userRole.findFirst({
         where: {
           userId: existingUser.id,
-          workspaceId,
-        },
-      });
-      if (isInWorkspace) throw new Error('User is already part of this workspace');
+          workspaceId
+        }
+      })
+      if (isInWorkspace) throw new Error('User is already part of this workspace')
     }
 
     // Create user if not exists
-    let invitedUserId = existingUser?.id;
-    let firstName = existingUser?.firstName ?? 'User';
-    const tempPassword = uuidv4().slice(0, 8); // always needed for invitation
+    let invitedUserId = existingUser?.id
+    let firstName = existingUser?.firstName ?? 'User'
+    const tempPassword = uuidv4().slice(0, 8) // always needed for invitation
 
     if (!existingUser) {
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      const hashedPassword = await bcrypt.hash(tempPassword, 10)
       const newUser = await prisma.user.create({
         data: {
           email,
@@ -376,15 +435,16 @@ export const workspaceService = {
           isActive: true,
           firstName: 'Invited',
           lastName: 'User',
+          UserRole: { create: { role, workspaceId } }
         },
-        select: { id: true, firstName: true },
-      });
-      invitedUserId = newUser.id;
-      firstName = newUser.firstName;
+        select: { id: true, firstName: true }
+      })
+      invitedUserId = newUser.id
+      firstName = newUser.firstName
     }
 
     // Create invitation and email
-    const inviteToken = uuidv4();
+    const inviteToken = uuidv4()
     const invitation = await prisma.invitation.create({
       data: {
         email,
@@ -395,18 +455,18 @@ export const workspaceService = {
         workspaceId,
         invitedById,
         invitedUserId,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      },
-    });
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+      }
+    })
 
     // Send email concurrently
     await Promise.all([
       sendEmail({
         to: email,
         subject: `Invitation to join ${workspace.name}`,
-        html: generateInvitationEmailHtml(firstName, tempPassword, workspace, inviteToken), // use the reusable function
-      }),
-    ]);
+        html: generateInvitationEmailHtml(firstName, tempPassword, workspace, inviteToken, role) // use the reusable function
+      })
+    ])
 
     // 📣 Push the notification using socket or background notifier
     await sendNotificationToUsers(
@@ -416,104 +476,150 @@ export const workspaceService = {
         userId: invitedUserId!,
         title: 'Workspace Invitation',
         message: `You’ve been invited to ${workspace.name} as a ${role} and its workspaceId is ${workspace.id}.`,
-        type: 'INVITATION',
+        type: 'INVITATION'
       },
       io
-    );
+    )
 
-    return invitation;
+    return invitation
   },
+  // acceptInvitation: async (inviteToken: string) => {
+  //   const invitation = await prisma.invitation.findUnique({
+  //     where: { inviteToken },
+  //     select: {
+  //       id: true,
+  //       status: true,
+  //       expiresAt: true,
+  //       invitedUserId: true,
+  //       workspaceId: true,
+  //       role: true,
+  //     },
+  //   });
+
+  //   if (!invitation) {
+  //     throw new Error('Invitation not found');
+  //   }
+
+  //   if (invitation.status !== InvitationStatus.PENDING) {
+  //     throw new Error('Invitation already accepted or expired');
+  //   }
+
+  //   if (invitation.expiresAt < new Date()) {
+  //     throw new Error('Invitation has expired');
+  //   }
+
+  //   if (!invitation.invitedUserId) {
+  //     throw new Error('Invited user ID is missing');
+  //   }
+
+  //   // Accept the invitation and add the user to workspace
+  //   await prisma.$transaction([
+  //     prisma.invitation.update({
+  //       where: { inviteToken },
+  //       data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() },
+  //     }),
+  //     prisma.userRole.create({
+  //       data: {
+  //         userId: invitation.invitedUserId,
+  //         workspaceId: invitation.workspaceId,
+  //         role: invitation.role,
+  //       },
+  //     }),
+  //   ]);
+
+  //   return { id: invitation.workspaceId };
+  // },
+
   acceptInvitation: async (inviteToken: string) => {
-    const invitation = await prisma.invitation.findUnique({
-      where: { inviteToken },
-      select: {
-        id: true,
-        status: true,
-        expiresAt: true,
-        invitedUserId: true,
-        workspaceId: true,
-        role: true,
-      },
-    });
-
-    if (!invitation) {
-      throw new Error('Invitation not found');
-    }
-
-    if (invitation.status !== InvitationStatus.PENDING) {
-      throw new Error('Invitation already accepted or expired');
-    }
-
-    if (invitation.expiresAt < new Date()) {
-      throw new Error('Invitation has expired');
-    }
-
-    if (!invitation.invitedUserId) {
-      throw new Error('Invited user ID is missing');
-    }
-
-    // Accept the invitation and add the user to workspace
-    await prisma.$transaction([
-      prisma.invitation.update({
+    try {
+      const invitation = await prisma.invitation.findUnique({
         where: { inviteToken },
-        data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() },
-      }),
-      prisma.userRole.create({
-        data: {
-          userId: invitation.invitedUserId,
-          workspaceId: invitation.workspaceId,
-          role: invitation.role,
-        },
-      }),
-    ]);
+        select: {
+          id: true,
+          status: true,
+          expiresAt: true,
+          invitedUserId: true,
+          workspaceId: true,
+          role: true
+        }
+      })
 
-    return { id: invitation.workspaceId };
+      if (!invitation) {
+        throw new Error('Invitation not found')
+      }
+
+      if (invitation.status !== InvitationStatus.PENDING) {
+        throw new Error('Invitation already accepted or expired')
+      }
+
+      if (invitation.expiresAt < new Date()) {
+        throw new Error('Invitation has expired')
+      }
+
+      if (!invitation.invitedUserId) {
+        throw new Error('Invited user ID is missing')
+      }
+
+      // Accept the invitation and add the user to workspace
+      await prisma.$transaction([
+        prisma.invitation.update({
+          where: { inviteToken },
+          data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() }
+        }),
+        prisma.userRole.create({
+          data: {
+            userId: invitation.invitedUserId,
+            workspaceId: invitation.workspaceId,
+            role: invitation.role
+          }
+        })
+      ])
+
+      // Generate the redirect URL
+      const redirectUrl = process.env.FRONTEND_URL + 'login'
+      return { workspaceId: invitation.workspaceId, redirectUrl } // return both workspaceId and the redirect URL
+    } catch (error) {
+      logger.error('Error accepting invitation:', error)
+      throw new Error('Failed to accept invitation')
+    }
   },
-
   getInvitations: async (userId: string) => {
     return prisma.invitation.findMany({
       where: { invitedUserId: userId, status: InvitationStatus.PENDING },
-      include: { workspace: true },
-    });
+      include: { workspace: true }
+    })
   },
 
-  setRolesPermissionService: async (
-    workspaceId: number,
-    role: Role,
-    permissions: string[],
-    userId: string
-  ) => {
+  setRolesPermissionService: async (workspaceId: number, role: Role, permissions: string[]) => {
     // Fetch existing permissions
     const existing = await prisma.rolePermission.findUnique({
       where: {
         workspaceId_role: {
           workspaceId,
-          role,
-        },
-      },
-    });
+          role
+        }
+      }
+    })
 
     // Merge & dedupe permissions if existing ones are found
-    const updatedPermissions = existing
-      ? Array.from(new Set([...existing.permission, ...permissions]))
-      : permissions;
+    const updatedPermissions = existing ? Array.from(new Set([...existing.permission, ...permissions])) : permissions
 
     await prisma.rolePermission.upsert({
       where: {
         workspaceId_role: {
           workspaceId,
-          role,
-        },
+          role
+        }
       },
       update: {
-        permission: updatedPermissions,
+        permission: updatedPermissions
       },
       create: {
         workspaceId,
         role,
-        permission: updatedPermissions,
-      },
-    });
+        permission: updatedPermissions
+      }
+    })
   },
   getWorkspaceUsers: async (workspaceId: number, userId: string) => {
     const workspace = await prisma.workspace.findUnique({
@@ -529,39 +635,39 @@ export const workspaceService = {
                 email: true,
                 status: true,
                 isActive: true,
-                profileImageUrl: true,
-              },
+                profileImageUrl: true
+              }
             },
-            role: true,
-          },
-        },
-      },
-    });
+            role: true
+          }
+        }
+      }
+    })
 
     if (!workspace) {
-      throw new Error('Workspace not found');
+      throw new Error('Workspace not found')
     }
 
     const userRole = await prisma.userRole.findFirst({
       where: {
         userId,
         workspaceId,
-        role: Role.ADMIN,
-      },
-    });
+        role: Role.ADMIN
+      }
+    })
     if (!userRole && workspace.ownerId !== userId) {
-      throw new Error('Unauthorized: Only admins or owners can view users');
+      throw new Error('Unauthorized: Only admins or owners can view users')
     }
 
     return workspace.UserRole.map((ur) => ({
       ...ur.user,
-      role: ur.role,
-    }));
+      role: ur.role
+    }))
   },
 
   getWorkspacesByUserId: async (userId: string) => {
     if (!userId) {
-      throw new Error('User ID is required');
+      throw new Error('User ID is required')
     }
 
     try {
@@ -569,9 +675,9 @@ export const workspaceService = {
         where: {
           UserRole: {
             some: {
-              userId,
-            },
-          },
+              userId
+            }
+          }
         },
         select: {
           id: true,
@@ -579,21 +685,21 @@ export const workspaceService = {
           slug: true,
           description: true,
           isActive: true,
-          createdAt: true,
-        },
-      });
+          createdAt: true
+        }
+      })
 
       if (!workspaces || workspaces.length === 0) {
-        throw new Error('No workspaces found for this user');
+        throw new Error('No workspaces found for this user')
       }
 
-      return workspaces;
+      return workspaces
     } catch (error) {
-      console.error('Error fetching workspaces:', error);
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        throw new Error('Database query failed: ' + error.message);
+      logger.error('Error fetching workspaces:', error)
+      if (error instanceof Error) {
+        throw new Error('Failed to fetch user workspaces: ' + error.message)
       }
-      throw new Error('Failed to fetch user workspaces: ' + error);
+      throw new Error('Failed to fetch user workspaces: Unknown error')
     }
   },
 
@@ -601,54 +707,54 @@ export const workspaceService = {
     try {
       const workspace = await prisma.workspace.findUnique({
         where: { id: workspaceId },
-        select: { isActive: true },
-      });
+        select: { isActive: true }
+      })
 
       if (!workspace) {
-        throw new Error('Workspace not found');
+        throw new Error('Workspace not found')
       }
 
       const updated = await prisma.workspace.update({
         where: { id: workspaceId },
         data: { isActive: !workspace.isActive },
-        select: { isActive: true },
-      });
+        select: { isActive: true }
+      })
 
-      return updated.isActive;
+      return updated.isActive
     } catch (error) {
-      console.error('Service error toggling workspace status:', error);
-      throw new Error('Failed to toggle workspace status');
+      logger.error('Service error toggling workspace status:', error)
+      throw new Error('Failed to toggle workspace status')
     }
   },
 
-  revokeInvitation: async (invitationId: number) => {
+  changeInvitationStatus: async (invitationId: number, status: InvitationStatus) => {
     try {
       const invitation = await prisma.invitation.findUnique({
-        where: { id: invitationId },
-      });
+        where: { id: invitationId }
+      })
 
       if (!invitation) {
-        throw new Error('Invitation not found');
+        throw new Error('Invitation not found')
       }
 
       await prisma.invitation.update({
         where: { id: invitationId },
-        data: { status: InvitationStatus.REVOKED },
-      });
+        data: { status: status }
+      })
     } catch (error) {
-      console.error('Service error revoking invitation:', error);
-      throw new Error('Failed to revoke invitation');
+      logger.error('Service error revoking invitation:', error)
+      throw new Error('Failed to revoke invitation')
     }
   },
 
   getRolePermissions: async (workspaceId: number, role: Role) => {
     try {
       return await prisma.rolePermission.findMany({
-        where: { workspaceId, role },
-      });
+        where: { workspaceId, role }
+      })
     } catch (error) {
-      console.error('Service error fetching role permissions:', error);
-      throw new Error('Failed to fetch role permissions');
+      logger.error('Service error fetching role permissions:', error)
+      throw new Error('Failed to fetch role permissions')
     }
   },
 
@@ -656,37 +762,37 @@ export const workspaceService = {
     // Validate workspace and ownership
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      select: { id: true, ownerId: true },
-    });
+      select: { id: true, ownerId: true }
+    })
 
-    if (!workspace) throw new Error('Workspace not found');
-    if (workspace.ownerId !== userId) throw new Error('Only the workspace owner can remove permissions');
+    if (!workspace) throw new Error('Workspace not found')
+    if (workspace.ownerId !== userId) throw new Error('Only the workspace owner can remove permissions')
 
     // Use transaction for atomic operation
     return prisma.$transaction(async (tx) => {
       const rolePermission = await tx.rolePermission.findUnique({
-        where: { workspaceId_role: { workspaceId, role } },
-      });
+        where: { workspaceId_role: { workspaceId, role } }
+      })
 
-      if (!rolePermission) throw new Error('Role permission not found');
+      if (!rolePermission) throw new Error('Role permission not found')
 
-      if (!rolePermission.permission.includes(permissionToRemove)) return null;
+      if (!rolePermission.permission.includes(permissionToRemove)) return null
 
-      const updatedPermissions = rolePermission.permission.filter(p => p !== permissionToRemove);
+      const updatedPermissions = rolePermission.permission.filter((p) => p !== permissionToRemove)
 
       if (updatedPermissions.length === 0) {
         await tx.rolePermission.delete({
-          where: { workspaceId_role: { workspaceId, role } },
-        });
+          where: { workspaceId_role: { workspaceId, role } }
+        })
       } else {
         await tx.rolePermission.update({
           where: { workspaceId_role: { workspaceId, role } },
-          data: { permission: updatedPermissions },
-        });
+          data: { permission: updatedPermissions }
+        })
       }
 
-      return true;
-    });
+      return true
+    })
   },
 
   exportWorkspaceData: async (
@@ -720,11 +826,11 @@ export const workspaceService = {
                   lastName: true,
                   email: true,
                   status: true,
-                  phone: true,
-                },
+                  phone: true
+                }
               },
-              role: true,
-            },
+              role: true
+            }
           },
           invitations: {
             skip: (invitationPage - 1) * invitationPageSize,
@@ -735,52 +841,52 @@ export const workspaceService = {
               status: true,
               role: true,
               createdAt: true,
-              acceptedAt: true,
-            },
-          },
-        },
-      });
+              acceptedAt: true
+            }
+          }
+        }
+      })
 
-      if (!workspace) throw new Error('Workspace not found');
+      if (!workspace) throw new Error('Workspace not found')
 
       // Count total for pagination
       const [userCount, invitationCount] = await Promise.all([
         prisma.userRole.count({
           where: {
-            workspaceId,
-          },
+            workspaceId
+          }
         }),
         prisma.invitation.count({
           where: {
-            workspaceId,
-          },
-        }),
-      ]);
+            workspaceId
+          }
+        })
+      ])
 
       return {
         workspace: {
           ...workspace,
           users: workspace.UserRole.map((ur) => ({
             ...ur.user,
-            role: ur.role,
-          })),
+            role: ur.role
+          }))
         },
         pagination: {
           users: {
             page: userPage,
             pageSize: userPageSize,
-            total: userCount,
+            total: userCount
           },
           invitations: {
             page: invitationPage,
             pageSize: invitationPageSize,
-            total: invitationCount,
-          },
-        },
-      };
+            total: invitationCount
+          }
+        }
+      }
     } catch (error) {
-      console.error('Service error exporting workspace data:', error);
-      throw new Error('Failed to export workspace data');
+      logger.error('Service error exporting workspace data:', error)
+      throw new Error('Failed to export workspace data')
     }
-  },
-};
+  }
+}

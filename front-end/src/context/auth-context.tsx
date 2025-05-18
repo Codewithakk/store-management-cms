@@ -1,7 +1,13 @@
 // context/auth-context.tsx
 'use client';
 
-import { createContext, useContext, ReactNode, useEffect } from 'react';
+import {
+  createContext,
+  useContext,
+  ReactNode,
+  useEffect,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppDispatch, useAppSelector } from '@/hooks/redux';
 import {
@@ -10,9 +16,11 @@ import {
   logoutUser,
   getCurrentUser,
   validateUserData,
+  refreshAuthToken,
 } from '@/store/slices/authSlice';
 import { User } from '@/types';
 import { persistor } from '@/store/index'; // Import persistor
+import { isTokenExpired, willTokenExpireSoon } from '@/utils/tokenUtils';
 
 type AuthContextType = {
   user: User | null;
@@ -29,7 +37,7 @@ type RegisterData = {
   email: string;
   password: string;
   role: string;
-  roles: string; // Added the missing 'roles' property
+  roles: string[]; // Updated 'roles' to be an array of strings
   phone: string;
 };
 
@@ -38,26 +46,96 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const dispatch = useAppDispatch();
   const { user, isLoading, error } = useAppSelector((state) => state.auth);
-  const router = useRouter();
 
-  // Listen for localStorage changes from other tabs or manual edits
+  const router = useRouter();
+  const [isInitializing, setIsInitializing] = useState(true);
+
   useEffect(() => {
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'user') {
-        dispatch(validateUserData());
+    let interval: NodeJS.Timeout;
+
+    const validateSession = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const userData = localStorage.getItem('user');
+
+        // No token or user data means we're definitely not logged in
+        if (!token || !userData) {
+          if (user) {
+            // If Redux thinks we're logged in but localStorage disagrees, sync state
+            await dispatch(logoutUser());
+          }
+          return;
+        }
+
+        // Check if token is expired or about to expire
+        if (isTokenExpired(token)) {
+          const refreshToken = localStorage.getItem('refreshToken');
+          if (refreshToken) {
+            try {
+              await dispatch(refreshAuthToken()).unwrap();
+              return; // Successfully refreshed, no need to get user
+            } catch (refreshError) {
+              console.log('Token refresh failed', refreshError);
+              await dispatch(logoutUser());
+              return;
+            }
+          } else {
+            // No refresh token available, log out
+            await dispatch(logoutUser());
+            return;
+          }
+        }
+
+        // If token is valid but will expire soon, try to refresh proactively
+        if (willTokenExpireSoon(token)) {
+          const refreshToken = localStorage.getItem('refreshToken');
+          if (refreshToken) {
+            try {
+              await dispatch(refreshAuthToken()).unwrap();
+              return;
+            } catch (refreshError) {
+              console.log('Proactive refresh failed', refreshError);
+              // Continue with current token since it's still valid
+            }
+          }
+        }
+
+        // Finally, verify the user data matches our token
+        if (!user) {
+          await dispatch(getCurrentUser()).unwrap();
+        }
+      } catch (error) {
+        console.log('Session validation error', error);
+      } finally {
+        if (isInitializing) {
+          setIsInitializing(false);
+        }
       }
     };
 
-    // Check for user data on mount
-    dispatch(validateUserData());
+    // Initial validation
+    validateSession();
 
-    // Add storage event listener
+    // Set up interval for checking token (every 5 minutes)
+    interval = setInterval(validateSession, 5 * 60 * 1000);
+
+    // Listen for storage events
+    const handleStorageChange = (event: StorageEvent) => {
+      if (
+        event.key === 'token' ||
+        event.key === 'refreshToken' ||
+        event.key === 'user'
+      ) {
+        validateSession();
+      }
+    };
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
+      clearInterval(interval);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [dispatch]);
+  }, [dispatch, user, isInitializing]);
 
   const login = async (email: string, password: string) => {
     try {

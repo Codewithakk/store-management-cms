@@ -4,6 +4,7 @@ export type User = {
   email: string;
   roles: Array<'ADMIN' | 'MANAGER' | 'STAFF' | 'CUSTOMER'>;
   locationId: string | null;
+  workspaceId: string | null;
 };
 export type LoginCredentials = {
   email: string;

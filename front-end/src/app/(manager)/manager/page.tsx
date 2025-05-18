@@ -17,7 +17,7 @@ import { useEffect, useState } from 'react';
 import { fetchWorkspaceById } from '@/store/slices/admin/workspaceSlice';
 import { format } from 'date-fns';
 
-export default function Manager() {
+export default  function Manager() {
   const [isMounted, setIsMounted] = useState(false);
   const dispatch = useDispatch<AppDispatch>();
   const workspaceId = useSelector((state: RootState) => state.auth.workspaceId);
@@ -25,12 +25,13 @@ export default function Manager() {
     (state: RootState) => state.workspace
   );
 
+
   useEffect(() => {
     setIsMounted(true);
-    if (workspaceId) {
+    if (workspaceId && !currentWorkspace && !isLoading) {
       dispatch(fetchWorkspaceById(workspaceId));
     }
-  }, [dispatch, workspaceId]);
+  }, [dispatch, workspaceId, currentWorkspace, isLoading]);
 
   if (!isMounted) {
     return null;
@@ -52,10 +53,11 @@ export default function Manager() {
     );
   }
 
+  // Show loading state while waiting for data
   if (!currentWorkspace) {
     return (
       <div className="flex items-center justify-center h-screen">
-        No workspace data available
+        Loading workspace data...
       </div>
     );
   }

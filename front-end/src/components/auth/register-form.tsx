@@ -98,7 +98,7 @@ export function RegisterForm() {
         lastName: values.lastName, // Keep lastName separate
         email: values.email,
         password: values.password,
-        roles: values.role,
+        roles: [values.role], // Wrap role in an array
         phone: values.phone,
       };
 

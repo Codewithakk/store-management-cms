@@ -20,6 +20,8 @@ import cartReducer from './slices/customer/cartSlice';
 import orderReducer from './slices/customer/orderSlice';
 import userProfileReducer from './slices/customer/userProfileSlice';
 import customerOrderReducer from './slices/manager/customerOrderSlice';
+import socketReducer from  './slices/socket/socketSlice'
+
 import { ThunkAction } from 'redux-thunk';
 
 // Define a reset action type
@@ -97,6 +99,11 @@ const customerOrderPersistConfig = {
   storage,
   whitelist: ['orders', 'currentOrder', 'status'],
 };
+const socketPersistConfig = {
+  key: 'socket',
+  storage,
+  whitelist: ['connected', 'userId', 'lastActivity']
+};
 
 // Wrap reducers with persistReducer
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
@@ -131,6 +138,8 @@ const persistedCustomerOrderReducer = persistReducer(
   customerOrderReducer
 );
 
+const persistedSocketReducer = persistReducer(socketPersistConfig, socketReducer);
+
 // Combine all reducers
 const appReducer = combineReducers({
   auth: persistedAuthReducer,
@@ -143,6 +152,7 @@ const appReducer = combineReducers({
   orders: persistedOrderReducer,
   userProfile: persistedUserProfileReducer,
   customerOrder: persistedCustomerOrderReducer,
+   socket: persistedSocketReducer,
 });
 
 // Root reducer with reset functionality
@@ -160,6 +170,8 @@ const rootReducer = (state: any, action: any) => {
     storage.removeItem('persist:orders');
     storage.removeItem('persist:userProfile');
     storage.removeItem('persist:customerOrder');
+
+     storage.removeItem('persist:socket');
 
     // Return undefined to let the reducers return their initial state
     state = undefined;
@@ -184,6 +196,7 @@ export const store = configureStore({
           'persist/REHYDRATE',
           'persist/REGISTER',
         ],
+        
       },
     }),
   devTools: true,

@@ -1,23 +1,17 @@
 // utils/emailTemplates.js
 
-import { Order } from "@prisma/client";
+import { Order } from '@prisma/client'
 
 type EmailTemplateParams = {
-  order: Order & { billingAddress?: any; shippingAddress?: any }; // Extend Order to include resolved addresses
-  user: { firstName: string; lastName?: string; email?: string }; // Define more if needed
-  workspace: { name: string };
-  itemsList: { name: string; quantity: number; price: number; total: string }[];
-  formatAddress: (address: any) => string;
-};
+    order: Order & { billingAddress?: any; shippingAddress?: any } // Extend Order to include resolved addresses
+    user: { firstName: string; lastName?: string; email?: string } // Define more if needed
+    workspace: { name: string }
+    itemsList: { name: string; quantity: number; price: number; total: string }[]
+    formatAddress: (address: any) => string
+}
 
-export function generateOrderConfirmationEmail({
-  order,
-  user,
-  workspace,
-  itemsList,
-  formatAddress,
-}: EmailTemplateParams): string {
-  return `
+export function generateOrderConfirmationEmail({ order, user, workspace, itemsList, formatAddress }: EmailTemplateParams): string {
+    return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -227,14 +221,18 @@ export function generateOrderConfirmationEmail({
                   </tr>
                 </thead>
                 <tbody>
-                  ${itemsList.map(item => `
+                  ${itemsList
+                      .map(
+                          (item) => `
                     <tr>
                       <td data-label="Item">${item.name}</td>
                       <td data-label="Qty" class="text-right">${item.quantity}</td>
                       <td data-label="Price" class="text-right">$${item.price.toFixed(2)}</td>
                       <td data-label="Total" class="text-right">$${Number(item.total).toFixed(2)}</td>
                     </tr>
-                  `).join('')}
+                  `
+                      )
+                      .join('')}
                 </tbody>
               </table>
             </td>
@@ -249,14 +247,18 @@ export function generateOrderConfirmationEmail({
           </tr>
 
           <!-- Billing Address -->
-          ${order.billingAddress ? `
+          ${
+              order.billingAddress
+                  ? `
           <tr>
             <td class="content">
               <h2 style="margin: 0 0 1rem; font-size: 1.125rem; font-weight: 600; color: #111827;">Billing Address</h2>
               <p style="margin: 0.25rem 0; color: #4b5563;">${formatAddress(order.billingAddress)}</p>
             </td>
           </tr>
-          ` : ''}
+          `
+                  : ''
+          }
 
           <!-- CTA Button -->
           <tr>
@@ -279,5 +281,5 @@ export function generateOrderConfirmationEmail({
   </table>
 </body>
 </html>
-  `;
+  `
 }

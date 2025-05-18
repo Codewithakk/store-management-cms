@@ -9,6 +9,7 @@ interface AuthState {
   error: string | null;
   activeRole: string | null;
   workspaceId: string | null;
+  token: string | null;
 }
 
 // Safely parse localStorage
@@ -80,6 +81,8 @@ export const switchActiveRole = createAsyncThunk(
   }
 );
 
+
+
 // New action to validate user data
 export const validateUserData = createAsyncThunk(
   'auth/validateUserData',
@@ -104,6 +107,47 @@ export const validateUserData = createAsyncThunk(
     } catch (error: any) {
       localStorage.removeItem('user');
       return rejectWithValue(error.message || 'Failed to validate user data');
+    }
+  }
+);
+
+export const refreshAuthToken = createAsyncThunk(
+  'auth/refreshToken',
+  async (_, { rejectWithValue }) => {
+    try {
+      // Get refresh token from localStorage
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      if (!refreshToken) {
+        return rejectWithValue('No refresh token available');
+      }
+
+      const response = await authAPI.refreshToken(refreshToken);
+
+      // Store the updated tokens
+      if (response && response.data && response.data.token) {
+        if (response && response.data && response.data.token) {
+          localStorage.setItem('token', response.data.token);
+        }
+      }
+
+      if (response && response.data && response.data.refreshToken) {
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+      }
+
+      if (response) {
+        return response.data;
+      } else {
+        throw new Error('Response is undefined');
+      }
+    } catch (error: any) {
+      // Clear tokens on failure
+      localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
+
+      return rejectWithValue(
+        error.response?.data?.message || 'Failed to refresh token'
+      );
     }
   }
 );
@@ -291,6 +335,9 @@ const authSlice = createSlice({
         }
       }
     },
+    setWorkspaceId: (state, action) => {
+      state.workspaceId = action.payload;
+    },
   },
   extraReducers: (builder) => {
     // Validate User Data
@@ -315,6 +362,22 @@ const authSlice = createSlice({
       }
     });
 
+    // Refresh Token
+    builder.addCase(refreshAuthToken.pending, (state) => {
+      state.isLoading = true;
+    });
+    builder.addCase(refreshAuthToken.fulfilled, (state) => {
+      state.isLoading = false;
+      state.error = null;
+    
+    });
+    builder.addCase(refreshAuthToken.rejected, (state, action) => {
+      state.isLoading = false;
+      state.error = action.payload as string;
+      state.user = null;
+      state.activeRole = null;
+    });
+
     // Login
     builder.addCase(loginUser.pending, (state) => {
       state.isLoading = true;
@@ -324,6 +387,9 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.user = action.payload.user;
       state.error = null;
+      if(action.payload.user?.workspaceId){
+        state.workspaceId = action.payload.user?.workspaceId;
+      }
       // Set active role on login
       state.activeRole = getInitialActiveRole(action.payload.user);
       if (state.activeRole && typeof window !== 'undefined') {
@@ -364,6 +430,7 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.user = null;
       state.activeRole = null;
+      state.workspaceId=null
     });
     builder.addCase(logoutUser.rejected, (state, action) => {
       state.isLoading = false;
@@ -371,6 +438,8 @@ const authSlice = createSlice({
       // Still clear user on error
       state.user = null;
       state.activeRole = null;
+      state.workspaceId=null
+
     });
 
     // Get Current User
@@ -428,5 +497,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearErrors, setActiveRole } = authSlice.actions;
+export const { clearErrors, setActiveRole,setWorkspaceId } = authSlice.actions;
 export default authSlice.reducer;

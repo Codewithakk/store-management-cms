@@ -82,7 +82,9 @@ export const RedisTTL = {
   ACCESS_TOKEN: 60 * 60,            // 1 hour
   REFRESH_TOKEN: 60 * 60 * 24 * 7,  // 7 days
   OTP: 60 * 5,                      // 5 minutes
-  RESET: 60 * 5                     // 5 minutes
+  RESET: 60 * 5,                     // 5 minutes
+  ONE_HOUR: 60 * 60,                // 1 hour
+  ONE_DAY: 60 * 60 * 24,
 };
 
 const redisClient = createClient({

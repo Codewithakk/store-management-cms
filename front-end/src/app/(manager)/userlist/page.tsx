@@ -9,15 +9,7 @@ import { AgGridReact } from 'ag-grid-react';
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Search,
-  Filter,
-  ArrowLeft,
-  Eye,
-  User,
-  ToggleLeft,
-  ToggleRight,
-} from 'lucide-react';
+import { Search, Filter, Eye, ToggleLeft, ToggleRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -76,6 +68,13 @@ interface Address {
   country: string;
 }
 
+interface PaymentDetails {
+  currency: string;
+  amountPaid: number;
+  paymentIntentId: string;
+  stripeSessionId: string;
+}
+
 interface Order {
   id: string;
   userId: string;
@@ -92,7 +91,7 @@ interface Order {
   updatedAt: string;
   stripeSessionId?: string | null;
   paidAt?: string | null;
-  paymentDetails?: any | null;
+  paymentDetails?: PaymentDetails | null;
   assignedTo?: string | null;
 }
 
@@ -115,6 +114,7 @@ interface StaffMember {
   locationId?: string | null;
   isDeleted: boolean;
   assignedOrders: Order[];
+  password: string;
 }
 
 // Status and payment color mappings
@@ -137,9 +137,15 @@ export default function UserListPage() {
   const dispatch = useDispatch<AppDispatch>();
   const router = useRouter();
   const workspaceId = useSelector((state: RootState) => state.auth.workspaceId);
-  const { data: staffMembers = [], isLoading, error } = workspaceId
+  const {
+    data: staffMembers = [],
+    isLoading,
+    error,
+  } = workspaceId
     ? useStaffMembers(workspaceId)
     : { data: [], isLoading: false, error: null };
+
+  console.log('Staff Members:', staffMembers);
 
   const gridRef = useRef<AgGridReact>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -160,7 +166,7 @@ export default function UserListPage() {
 
   // Filter staff members
   const filteredStaffMembers = useMemo(() => {
-    return staffMembers.filter((staff: StaffMember) => {
+    return staffMembers.filter((staff: any) => {
       const matchesSearch =
         staff.firstName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         staff.lastName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -240,22 +246,10 @@ export default function UserListPage() {
         headerName: 'Assigned Orders',
         flex: 1,
         minWidth: 150,
-        valueGetter: (params: any) => params.data.assignedOrders.length.toString(),
+        valueGetter: (params: any) =>
+          params.data.assignedOrders.length.toString(),
       },
-      {
-        headerName: 'Last Login',
-        field: 'lastLogin',
-        flex: 1,
-        minWidth: 150,
-        valueFormatter: (params: any) =>
-          params.value
-            ? new Date(params.value).toLocaleDateString('en-US', {
-                month: 'short',
-                day: '2-digit',
-                year: 'numeric',
-              })
-            : 'Never',
-      },
+
       {
         headerName: 'Joined',
         field: 'createdAt',
@@ -293,23 +287,7 @@ export default function UserListPage() {
                     <p>View Orders</p>
                   </TooltipContent>
                 </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setSelectedStaff(staff);
-                        setIsAssignDialogOpen(true);
-                      }}
-                    >
-                      <User className="h-4 w-4 text-purple-500" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Assign Order</p>
-                  </TooltipContent>
-                </Tooltip>
+
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -325,7 +303,9 @@ export default function UserListPage() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{staff.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</p>
+                    <p>
+                      {staff.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                    </p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -367,17 +347,6 @@ export default function UserListPage() {
             staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'
           }`
         );
-        // Example API call:
-        // await fetch(`/api/staff/${staff.id}/status`, {
-        //   method: 'PATCH',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({
-        //     workspaceId,
-        //     status: staff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-        //   }),
-        // });
-        // Refresh staff members
-        // Note: Implement actual Redux action or refetch
       } catch (error) {
         setErrorMessage('Failed to toggle staff status');
       }
@@ -391,19 +360,6 @@ export default function UserListPage() {
       if (!selectedStaff || !orderId || !workspaceId) return;
 
       try {
-        // Replace with actual API call
-        console.log(
-          `Assigning order ${orderId} to staff ${selectedStaff.id}`
-        );
-        // Example API call:
-        // await fetch(`/api/orders/${orderId}/assign`, {
-        //   method: 'PATCH',
-        //   headers: { 'Content-Type': 'application/json' },
-        //   body: JSON.stringify({
-        //     workspaceId,
-        //     userId: selectedStaff.id,
-        //   }),
-        // });
         setIsAssignDialogOpen(false);
         setSelectedOrderId('');
         setSelectedStaff(null);
@@ -424,11 +380,6 @@ export default function UserListPage() {
         : [...prev, status]
     );
   }, []);
-
-  // Handle back to dashboard
-  const handleBackToDashboard = useCallback(() => {
-    router.push('/dashboard');
-  }, [router]);
 
   // Status badge renderer for orders
   const StatusBadgeRenderer = useCallback(({ value }: { value: string }) => {
@@ -452,7 +403,10 @@ export default function UserListPage() {
         role="alert"
       >
         <strong className="font-bold">Error!</strong>
-        <span className="block sm:inline"> {error?.message || errorMessage}</span>
+        <span className="block sm:inline">
+          {' '}
+          {error?.message || errorMessage}
+        </span>
         <Button
           className="mt-2"
           onClick={() => {
@@ -470,13 +424,6 @@ export default function UserListPage() {
     <div className="w-full max-w-[1600px] mx-auto px-3 py-2 md:px-5 md:py-2">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 md:p-6">
         <div className="flex items-center mb-6">
-          <Button
-            variant="ghost"
-            onClick={handleBackToDashboard}
-            className="mr-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" /> Back
-          </Button>
           <h2 className="text-2xl font-semibold text-gray-800">
             Staff Management
           </h2>
@@ -603,13 +550,17 @@ export default function UserListPage() {
                           </div>
                           <div>
                             <p className="text-sm font-medium">Placed At</p>
-                            <p className="text-sm">{formatDate(order.placedAt)}</p>
+                            <p className="text-sm">
+                              {formatDate(order.placedAt)}
+                            </p>
                           </div>
                         </div>
                         {order.notes && (
                           <div className="mt-4">
                             <p className="text-sm font-medium">Notes</p>
-                            <p className="text-sm text-gray-500">{order.notes}</p>
+                            <p className="text-sm text-gray-500">
+                              {order.notes}
+                            </p>
                           </div>
                         )}
                       </CardContent>
@@ -643,7 +594,10 @@ export default function UserListPage() {
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Select value={selectedOrderId} onValueChange={setSelectedOrderId}>
+              <Select
+                value={selectedOrderId}
+                onValueChange={setSelectedOrderId}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select an order" />
                 </SelectTrigger>

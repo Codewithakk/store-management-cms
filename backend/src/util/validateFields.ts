@@ -1,3 +1,3 @@
-export const validateFields = (fields: Record<string, any>) => {
-  return Object.entries(fields).find(([key, value]) => !value) ? false : true;
-};
+export const validateFields = (fields: Record<string, unknown>) => {
+    return Object.entries(fields).find(([value]) => !value) ? false : true
+}

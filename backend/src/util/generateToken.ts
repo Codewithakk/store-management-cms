@@ -17,7 +17,6 @@
 // //       }
 // // };
 
-
 // import { Role } from "@prisma/client";
 // import jwt from "jsonwebtoken";
 
@@ -35,17 +34,17 @@
 //   return { token, refreshToken };
 // };
 
-import jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken'
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
 
 if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
-  throw new Error('JWT_SECRET and JWT_REFRESH_SECRET must be defined in environment variables');
+    throw new Error('JWT_SECRET and JWT_REFRESH_SECRET must be defined in environment variables')
 }
 
-const JWT_EXPIRES_IN = '1h';
-const REFRESH_EXPIRES_IN = '7d';
+const JWT_EXPIRES_IN = '1h'
+const REFRESH_EXPIRES_IN = '7d'
 
 // export const generateToken = (userId: string) => {
 //   const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -54,8 +53,7 @@ const REFRESH_EXPIRES_IN = '7d';
 // };
 
 export const generateToken = (userId: string, roles: string[]) => {
-  const token = jwt.sign({ userId, roles }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-  const refreshToken = jwt.sign({ userId, roles }, JWT_REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });
-  return { token, refreshToken };
-};
-
+    const token = jwt.sign({ userId, roles }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+    const refreshToken = jwt.sign({ userId, roles }, JWT_REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN })
+    return { token, refreshToken }
+}

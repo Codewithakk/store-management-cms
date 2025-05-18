@@ -47,7 +47,6 @@ export default function AdminLayout({
           router.push('/unauthorized');
         }
       }
-      // If user has ADMIN role and activeRole is ADMIN, they can access the admin layout
     }
   }, [user, isLoading, router, activeRole]);
 
@@ -137,7 +136,6 @@ export default function AdminLayout({
                   )}
                   onClick={() => {
                     setIsSidebarOpen(false);
-                    // Force navigation to the absolute path
                     router.push(item.path);
                   }}
                 >

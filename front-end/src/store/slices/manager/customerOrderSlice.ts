@@ -77,7 +77,7 @@ interface Order {
   user: User;
   shippingAddress: Address;
   billingAddress: Address;
-   assignedStaff?: StaffMember | string;
+  assignedStaff?: StaffMember | string;
 }
 
 interface OrderState {
@@ -173,20 +173,30 @@ export const updateOrderStatus = createAsyncThunk(
 
 export const assignStaffToOrder = createAsyncThunk(
   'customerOrders/assignStaffToOrder',
-  async ({ workspaceId,orderId, userId }: { workspaceId:string, orderId: string; userId: string }) => {
-    console.log("Assigning staff member to order:", { workspaceId, orderId, userId });
-    const response = await axiosInstance.post(`/orders/workspaces/${workspaceId}/orders/assign-order`, { 
-      userId: userId,
-      orderId: orderId,
+  async ({
+    workspaceId,
+    orderId,
+    userId,
+  }: {
+    workspaceId: string;
+    orderId: string;
+    userId: string;
+  }) => {
+    console.log('Assigning staff member to order:', {
+      workspaceId,
+      orderId,
+      userId,
     });
+    const response = await axiosInstance.post(
+      `/orders/workspaces/${workspaceId}/orders/assign-order`,
+      {
+        userId: userId,
+        orderId: orderId,
+      }
+    );
     return { orderId, userId, response: response.data };
   }
 );
-
-
-
-
-
 
 const orderSlice = createSlice({
   name: 'orders',
@@ -271,7 +281,9 @@ const orderSlice = createSlice({
       })
       .addCase(assignStaffToOrder.fulfilled, (state, action) => {
         const { orderId, userId } = action.payload;
-        const orderIndex = state.orders.findIndex(order => order.id === orderId);
+        const orderIndex = state.orders.findIndex(
+          (order) => order.id === orderId
+        );
         if (orderIndex !== -1) {
           state.orders[orderIndex].assignedStaff = userId; // Assign userId as a string
         }

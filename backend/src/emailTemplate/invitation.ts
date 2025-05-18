@@ -1,5 +1,5 @@
 // A function to generate the HTML content for the invitation email
-export const generateInvitationEmailHtml = (firstName: string, tempPassword: string, workspace: { name: string }, inviteToken: string) => {
+export const generateInvitationEmailHtml = (firstName: string, tempPassword: string, workspace: { name: string }, inviteToken: string, role: string) => {
   return `
     <!DOCTYPE html>
     <html>
@@ -8,7 +8,7 @@ export const generateInvitationEmailHtml = (firstName: string, tempPassword: str
         <div style="max-width: 600px; margin: auto; background: white; padding: 30px; border-radius: 10px;">
           <h2 style="color: #333;">👋 You're Invited!</h2>
           <p>Hi <strong>${firstName}</strong>,</p>
-          <p>You’ve been invited to join <strong>${workspace.name}</strong> as a <strong>Role</strong>.</p>
+          <p>You’ve been invited to join <strong>${workspace.name}</strong> as a <strong>${role}</strong>.</p>
           <p>Your temporary password is: <strong style="background: #f0f0f0; padding: 5px; border-radius: 3px;">${tempPassword}</strong></p>
           <p>Please log in and update your password.</p>
           <a href="${process.env.SERVER_URL}/api/v1/workspaces/invitation/accept/${inviteToken}"
@@ -19,5 +19,5 @@ export const generateInvitationEmailHtml = (firstName: string, tempPassword: str
         </div>
       </body>
     </html>
-  `;
-};
+  `
+}

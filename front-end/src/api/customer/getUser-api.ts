@@ -25,9 +25,6 @@ interface UserProfile {
   updatedAt: string;
 }
 
-// Assume Store is an alias for Address
-type Store = Address;
-
 export const UserDeatilesApi = {
   // Get user's saved addresses
   getUserAddress: async () => {
@@ -43,6 +40,7 @@ export const UserDeatilesApi = {
   getUserProfile: async () => {
     try {
       const response = await axiosInstance.get(`/auth/userDetails`);
+      console.log('User profile response:===>', response.data);
       return { data: { user: response.data.data } };
     } catch (error) {
       throw error;
@@ -83,7 +81,7 @@ export const UserDeatilesApi = {
         `/auth/address/${addressId}`,
         profileData
       );
-      return { data: { user: response.data.data } }; // Or adjust structure as per actual response
+      return { data: { user: response.data.data } };
     } catch (error) {
       throw error;
     }

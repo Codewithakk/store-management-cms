@@ -29,6 +29,8 @@ import { Badge } from '@/components/ui/badge';
 import { StoreModal } from '@/components/store/workspaceModal/createWorkSpaceForCutomerForm';
 import { CartButton } from '@/components/cart/cartButton';
 import Notifications from '../notifications/userNotification';
+import useWebSocket from '@/hooks/socket/useWebSocket';
+
 
 interface HeaderProps {
   user: User | null;
@@ -40,11 +42,30 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
   const dispatch = useDispatch<AppDispatch>();
   const { toast } = useToast();
   const [storeModalOpen, setStoreModalOpen] = useState(false);
+  const [isSwitching, setIsSwitching] = useState(false);
 
-  // Get auth state from Redux store
+
+  // Initialize WebSocket connection -disconnect
+
+  const {disconnect}= useWebSocket({
+    userId: user?.id,
+    autoConnect: !!user?.id,
+  });
+
+  const handleLogout = () => {
+  disconnect();
+  logout();
+  
+console.log('User logged out and socket disconnected');
+
+};
+
+
+
+  //getActive role
   const { activeRole } = useSelector((state: RootState) => state.auth);
 
-  // Get workspace state from Redux store
+  // Get workspace state from Reduxstore
   const { workspaces, activeWorkspace } = useSelector(
     (state: RootState) => state.workspace
   ) as {
@@ -52,37 +73,49 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
     activeWorkspace: { id: string; name: string } | null;
   };
 
-  // Track the current workspace name in local state
-  const [currentWorkspaceName, setCurrentWorkspaceName] =
-    useState('Select Workspace');
+  // Initialize currentWorkspaceName based on activeWorkspace or fallback
+  const [currentWorkspaceName, setCurrentWorkspaceName] = useState(
+    activeWorkspace?.name || 'Select Workspace'
+  );
 
+  // Sync role from localStorage on mount
   useEffect(() => {
     const savedRole = localStorage.getItem('activeRole');
     if (savedRole) {
       dispatch(setActiveRole(savedRole));
     }
   }, [dispatch]);
-  // Update local state whenever activeWorkspace changes
+
+  // Sync currentWorkspaceName when activeWorkspace or workspaces change
   useEffect(() => {
     if (activeWorkspace?.name) {
       setCurrentWorkspaceName(activeWorkspace.name);
-    } else if (workspaces.length > 0) {
-      setCurrentWorkspaceName('Select Workspace');
-    } else {
-      setCurrentWorkspaceName('No Workspaces');
     }
-  }, [activeWorkspace, workspaces]);
+  }, [activeWorkspace]);
 
   const handleSwitchWorkspace = (id: string) => {
+    if (isSwitching || activeWorkspace?.id === id) return; // Prevent redundant switches
+    setIsSwitching(true);
+
     const workspace = workspaces.find((w) => w.id === id);
-    if (workspace && workspace.name) {
-      setCurrentWorkspaceName(workspace.name);
+    if (workspace) {
+      setCurrentWorkspaceName(workspace.name); // Update local state immediately
+      dispatch(setActiveWorkspace(id)); // Update Redux state
+      toast({
+        title: 'Workspace Switched',
+        description: `You are now working in ${workspace.name}.`,
+      });
+    } else {
+      console.error('Workspace not found:', id);
+      toast({
+        title: 'Error',
+        description: 'Selected workspace not found.',
+        variant: 'destructive',
+      });
     }
-    dispatch(setActiveWorkspace(id));
-    toast({
-      title: 'Workspace Switched',
-      description: `You are now working in ${workspace?.name || 'the selected workspace'}.`,
-    });
+
+    // Re-enable switching after a short delay
+    setTimeout(() => setIsSwitching(false), 500);
   };
 
   const handleRoleChange = (role: string) => {
@@ -100,6 +133,11 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
     }
   };
 
+  const { status } = useWebSocket({ 
+  userId: user?.id, 
+  autoConnect: !!user?.id 
+});
+
   return (
     <>
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-white/95 backdrop-blur-sm px-4 shadow-sm md:px-6">
@@ -115,13 +153,26 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
           </Button>
 
           <div className="hidden md:block">
-            <span className="text-sm font-medium text-gray-700">WELCOME </span>
-            {/* <span className="text-sm font-semibold text-gray-900">{user?.name || "User"}</span> */}
+            <span className="text-sm font-medium text-gray-700">WELCOME</span>
           </div>
         </div>
 
+
+        {/* socket indicator */}
+
+        <div className="flex items-center gap-2">
+  <div className={`h-2 w-2 rounded-full ${
+    status.isConnected ? 'bg-green-500' : 
+    status.isConnecting ? 'bg-yellow-500' : 
+    'bg-red-500'
+  }`} />
+  <span className="text-xs text-gray-500">
+    {status.isConnected ? 'Connected' : 
+     status.isConnecting ? 'Connecting' : 'Disconnected'}
+  </span>
+</div>
+
         <div className="flex items-center gap-3">
-          {/* Conditional button for CUSTOMER role */}
           {activeRole === 'CUSTOMER' &&
             user &&
             !user?.roles?.includes('ADMIN') && (
@@ -147,7 +198,6 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
             </Button>
           )}
 
-          {/* Role Switcher */}
           {user?.roles && user.roles.length > 1 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -218,7 +268,6 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
             </DropdownMenu>
           )}
 
-          {/* Workspace switcher */}
           {activeRole === 'ADMIN' && workspaces.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -226,6 +275,7 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
                   variant="outline"
                   size="sm"
                   className="h-9 gap-1.5 border-gray-200 pr-1.5 rounded-full"
+                  disabled={isSwitching}
                 >
                   <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-xs">
                     {currentWorkspaceName
@@ -246,12 +296,15 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
                     key={workspace.id}
                     onClick={() => handleSwitchWorkspace(workspace.id)}
                     className="flex items-center gap-2 cursor-pointer"
+                    disabled={
+                      isSwitching || activeWorkspace?.id === workspace.id
+                    }
                   >
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-xs">
                       {workspace.name.charAt(0)}
                     </div>
                     <span>{workspace.name}</span>
-                    {currentWorkspaceName === workspace.name && (
+                    {activeWorkspace?.id === workspace.id && (
                       <Badge
                         variant="outline"
                         className="ml-auto h-5 bg-gray-100 px-1.5 text-xs font-normal"
@@ -265,13 +318,10 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
             </DropdownMenu>
           )}
 
-          {/* Notifications */}
           <Notifications />
 
-          {/* Cart Button */}
           {activeRole === 'CUSTOMER' && <CartButton />}
 
-          {/* User menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -316,7 +366,7 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex items-center gap-2 cursor-pointer"
-                onClick={logout}
+                onClick={handleLogout}
               >
                 <LogOut className="h-4 w-4" />
                 <span>Logout</span>
@@ -324,11 +374,10 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Logout button for smaller screens */}
           <Button
             variant="default"
             size="sm"
-            onClick={logout}
+            onClick={handleLogout}
             className="hidden max-sm:flex max-sm:h-8 max-sm:text-xs rounded-full"
           >
             Logout
@@ -336,7 +385,6 @@ export function Header({ user, toggleSidebar, logout }: HeaderProps) {
         </div>
       </header>
 
-      {/* Store creation modal with onSuccess callback */}
       <StoreModal open={storeModalOpen} onOpenChange={handleModalClose} />
     </>
   );
