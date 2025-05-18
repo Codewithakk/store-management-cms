@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { Role } from '@prisma/client'
 import roleRestriction from '../../../middleware/roleRestriction'
-import variantController from '../../../controllers/variant.controller'
+import variantController from '../../../controllers/variants/variant.controller'
 import { authMiddleware } from '../../../middleware/auth.middleware'
 const router = Router()
 
