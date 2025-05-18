@@ -23,7 +23,7 @@ const httpServer = http.createServer(app)
 // Set up Socket.IO
 export const io = new SocketIOServer(httpServer, {
     cors: {
-        origin: ['http://localhost:3000', 'http://localhost:3000', 'https://d9fd-2402-a00-162-ea17-8dea-c99e-ed74-4511.ngrok-free.app'],
+        origin: ['https://store-management-cms-frontend.onrender.com'],
         credentials: true
     }
 })

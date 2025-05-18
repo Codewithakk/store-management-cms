@@ -57,9 +57,7 @@ app.use(compression())
 app.use(
     cors({
         origin: [
-            'http://localhost:3000',
-            'http://localhost:3001', // adjust for development or production
-            'https://48c9-2402-a00-162-ea17-b1cc-fa3f-8210-4bcb.ngrok-free.app' // adjust for development or production
+            'https://store-management-cms-frontend.onrender.com'
         ],
         methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
         credentials: true
