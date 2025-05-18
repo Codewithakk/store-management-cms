@@ -52,11 +52,10 @@ export function WorkspaceList({
       {workspaces.map((workspace) => (
         <Card
           key={workspace.id}
-          className={`overflow-hidden transition-all duration-200 hover:shadow-md ${
-            activeWorkspace === workspace.id
+          className={`overflow-hidden transition-all duration-200 hover:shadow-md ${activeWorkspace === workspace.id
               ? 'ring-2 ring-green-500 border-green-200  bg-green-50/30 shadow-sm shadow-green-100 '
               : 'hover:translate-y-[-2px]'
-          }`}
+            }`}
         >
           <div className="aspect-video w-full overflow-hidden bg-muted/20">
             <Image
@@ -207,7 +206,7 @@ export function WorkspaceList({
                       Cancel
                     </AlertDialogCancel>
                     <AlertDialogAction
-                      onClick={() => onDeleteWorkspace(workspace.id)}
+                      onClick={() => onDeleteWorkspace(String(workspace.id))}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs h-8"
                     >
                       Delete

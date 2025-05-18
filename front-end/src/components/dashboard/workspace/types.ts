@@ -1,15 +1,14 @@
 import * as z from 'zod';
 
-// Define the workspace schema
 export const workspaceSchema = z.object({
-  id: z.string().optional(),
+  id: z.string().optional(), // string only, optional
   name: z
     .string()
     .min(3, { message: 'Workspace name must be at least 3 characters' }),
   description: z
     .string()
     .min(10, { message: 'Description must be at least 10 characters' }),
-  images: z.array(z.string()).default([]),
+  images: z.array(z.string()), // required array of strings
   openingTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
     message: 'Opening time must be in 24-hour format (HH:MM)',
   }),

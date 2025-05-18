@@ -15,7 +15,7 @@ module.exports = {
   rules: {
     // Only check for unused variables, but ignore variables that start with underscore
     '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
     // Disable other TypeScript checks
     '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/ban-ts-comment': 'off',

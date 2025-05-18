@@ -28,7 +28,7 @@ export default function DashboardSidebar() {
   ];
 
   const filteredNavItems = navItems.filter(
-    (item) => user?.role && item.allowedRoles.includes(user.role)
+    (item) => user?.roles && user.roles.some(role => item.allowedRoles.includes(role.toLowerCase()))
   );
 
   return (
@@ -45,9 +45,8 @@ export default function DashboardSidebar() {
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`block px-4 py-2 rounded hover:bg-gray-700 transition-colors ${
-                    isActive ? 'bg-gray-700 font-medium' : ''
-                  }`}
+                  className={`block px-4 py-2 rounded hover:bg-gray-700 transition-colors ${isActive ? 'bg-gray-700 font-medium' : ''
+                    }`}
                 >
                   {item.name}
                 </Link>

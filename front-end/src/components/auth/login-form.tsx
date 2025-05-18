@@ -46,46 +46,46 @@ export function LoginForm() {
     },
   });
 
- const onSubmit = async (values: LoginFormValues) => {
-  try {
-    // Start the login process
-    const resultAction = await dispatch(
-      loginUser({ email: values.email, password: values.password })
-    );
+  const onSubmit = async (values: LoginFormValues) => {
+    try {
+      // Start the login process
+      const resultAction = await dispatch(
+        loginUser({ email: values.email, password: values.password })
+      );
 
-    if (loginUser.fulfilled.match(resultAction)) {
-      // Show success message
-      toast.success(resultAction.payload.message || 'Login successful!');
+      if (loginUser.fulfilled.match(resultAction)) {
+        // Show success message
+        toast.success(resultAction.payload.message || 'Login successful!');
 
-      // Set workspace ID if available
-      if(resultAction.payload.user?.workspaceId) {
-        dispatch(setWorkspaceId(resultAction.payload.user.workspaceId));
-      }
-
-      setTimeout(async () => {
-        // Get the user's roles from the response
-        const userRoles = resultAction.payload.user?.roles || [];
-
-        // Redirect based on role
-        if (userRoles.includes('ADMIN')) {
-          await router.push('/dashboard');
-        } else if (userRoles.includes('CUSTOMER')) {
-          await router.push('/stores');
-        } else if (userRoles.includes('MANAGER')) {
-          await router.push('/manager');
-        } else if (userRoles.includes('STAFF')) {
-          await router.push('/staff');
-        } else {
-          // Fallback route
-          await router.push('/login');
+        // Set workspace ID if available
+        if (resultAction.payload.user?.workspaceId) {
+          dispatch(setWorkspaceId(resultAction.payload.user.workspaceId));
         }
-      }, 300); // Small delay to ensure state updates
+
+        setTimeout(async () => {
+          // Get the user's roles from the response
+          const userRoles = resultAction.payload.user?.roles || [];
+
+          // Redirect based on role
+          if (userRoles.includes('ADMIN')) {
+            await router.push('/dashboard');
+          } else if (userRoles.includes('CUSTOMER')) {
+            await router.push('/stores');
+          } else if (userRoles.includes('MANAGER')) {
+            await router.push('/manager');
+          } else if (userRoles.includes('STAFF')) {
+            await router.push('/staff');
+          } else {
+            // Fallback route
+            await router.push('/login');
+          }
+        }, 300); // Small delay to ensure state updates
+      }
+    } catch (err) {
+      toast.error('Login failed. Please check your credentials.');
+      console.error('Login failed:', err);
     }
-  } catch (err) {
-    toast.error('Login failed. Please check your credentials.');
-    console.error('Login failed:', err);
-  }
-};
+  };
 
   // Clear any errors when form changes
   const handleFormChange = () => {
@@ -104,7 +104,7 @@ export function LoginForm() {
             href="/register"
             className="text-sm text-blue-500 hover:underline"
           >
-            I don&apos;t have an account
+            <p>{"Don't forget"}</p>
           </Link>
         </div>
       </CardHeader>

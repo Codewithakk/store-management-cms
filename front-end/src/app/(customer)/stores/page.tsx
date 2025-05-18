@@ -69,7 +69,7 @@ export default function ProductStoreMainPage() {
 
   // Navigate to store detail page
   const handleStoreClick = (storeId: string | number) => {
-    router.push(`/stores/${storeId}`);
+    router.push(`/stores/${storeId.toString()}`);
   };
 
   // Handle category selection
@@ -175,9 +175,10 @@ export default function ProductStoreMainPage() {
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 px-3 gap-6">
                 {filteredStores.map((store) => (
                   <StoreCard
-                    key={store.id}
+                    key={store.id.toString()}
                     store={{
                       ...store,
+                      id: store.id.toString(),
                       // Provide default values for properties that might be missing
                       rating: store.rating || 4.5,
                       distance: store.distance || 'N/A',
@@ -201,7 +202,10 @@ export default function ProductStoreMainPage() {
                 .map((store) => (
                   <StoreCard
                     key={store.id}
-                    store={store}
+                    store={{
+                      ...store,
+                      description: store.description ?? 'No description available',
+                    }}
                     onClick={() => handleStoreClick(store.id)}
                   />
                 ))}
@@ -224,7 +228,10 @@ export default function ProductStoreMainPage() {
                 .map((store) => (
                   <StoreCard
                     key={store.id}
-                    store={store}
+                    store={{
+                      ...store,
+                      description: store.description ?? 'No description available',
+                    }}
                     onClick={() => handleStoreClick(store.id)}
                   />
                 ))}
@@ -247,7 +254,10 @@ export default function ProductStoreMainPage() {
                 .map((store) => (
                   <StoreCard
                     key={store.id}
-                    store={store}
+                    store={{
+                      ...store,
+                      description: store.description ?? 'No description available',
+                    }}
                     onClick={() => handleStoreClick(store.id)}
                   />
                 ))}

@@ -80,7 +80,7 @@ export interface Product {
 }
 
 export interface Store {
-  id: number;
+  id: string | number;
   name: string;
   slug: string;
   images: string[];
@@ -134,12 +134,12 @@ export interface Order {
   paymentStatus: 'PENDING' | 'PAID' | 'FAILED' | string;
   totalAmount: number;
   status:
-    | 'PENDING'
-    | 'CONFIRMED'
-    | 'SHIPPED'
-    | 'DELIVERED'
-    | 'CANCELLED'
-    | string;
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'CANCELLED'
+  | string;
   notes?: string;
   placedAt: string;
   createdAt: string;

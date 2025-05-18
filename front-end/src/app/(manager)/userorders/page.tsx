@@ -83,10 +83,10 @@ interface OrderItem {
 
 interface Address {
   address: string;
-  street?: string;
+  street?: string | null;
   city: string;
-  region?: string;
-  postalCode?: string;
+  region?: string | null;
+  postalCode?: string | null;
   country: string;
 }
 
@@ -328,7 +328,7 @@ const OrdersPage = () => {
       {
         headerName: 'Order ID',
         field: 'id',
-        sort: 'desc',
+        sort: 'desc' as 'desc',
         cellRenderer: OrderIdRenderer,
         width: 220,
         minWidth: 150,
@@ -357,7 +357,7 @@ const OrdersPage = () => {
         width: 120,
         minWidth: 100,
         flex: 1,
-        sort: 'desc',
+        sort: 'desc' as 'desc',
       },
       {
         headerName: 'Status',

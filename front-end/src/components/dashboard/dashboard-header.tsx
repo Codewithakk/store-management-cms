@@ -14,9 +14,9 @@ export default function DashboardHeader() {
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-700">
             <span>Welcome, </span>
-            <span className="font-medium">{user?.role}</span>
+            <span className="font-medium">{user?.roles}</span>
             <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-              {user?.role}
+              {user?.roles}
             </span>
           </div>
           <Button variant="outline" size="sm" onClick={logout}>

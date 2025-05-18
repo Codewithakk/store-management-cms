@@ -26,7 +26,7 @@ const Notifications = () => {
   const [hasMore, setHasMore] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
 
-  const observer = useRef<IntersectionObserver>();
+  const observer = useRef<IntersectionObserver | null>(null);
 
   const fetchNotifications = async (offset: number) => {
     setIsLoading(true);

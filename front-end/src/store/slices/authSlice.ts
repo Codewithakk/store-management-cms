@@ -56,8 +56,11 @@ const initialState: AuthState = {
   activeRole:
     typeof window !== 'undefined'
       ? localStorage.getItem('activeRole') ||
-        getInitialActiveRole(safeParseJson(localStorage.getItem('user')))
+      getInitialActiveRole(safeParseJson(localStorage.getItem('user')))
       : null,
+
+  token:
+    typeof window !== 'undefined' ? localStorage.getItem('token') : null,
 };
 
 // New action to switch active role
@@ -369,7 +372,7 @@ const authSlice = createSlice({
     builder.addCase(refreshAuthToken.fulfilled, (state) => {
       state.isLoading = false;
       state.error = null;
-    
+
     });
     builder.addCase(refreshAuthToken.rejected, (state, action) => {
       state.isLoading = false;
@@ -387,7 +390,7 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.user = action.payload.user;
       state.error = null;
-      if(action.payload.user?.workspaceId){
+      if (action.payload.user?.workspaceId) {
         state.workspaceId = action.payload.user?.workspaceId;
       }
       // Set active role on login
@@ -430,7 +433,7 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.user = null;
       state.activeRole = null;
-      state.workspaceId=null
+      state.workspaceId = null
     });
     builder.addCase(logoutUser.rejected, (state, action) => {
       state.isLoading = false;
@@ -438,7 +441,7 @@ const authSlice = createSlice({
       // Still clear user on error
       state.user = null;
       state.activeRole = null;
-      state.workspaceId=null
+      state.workspaceId = null
 
     });
 
@@ -497,5 +500,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearErrors, setActiveRole,setWorkspaceId } = authSlice.actions;
+export const { clearErrors, setActiveRole, setWorkspaceId } = authSlice.actions;
 export default authSlice.reducer;

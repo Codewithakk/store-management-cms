@@ -137,7 +137,17 @@ const categorySlice = createSlice({
       })
       .addCase(fetchAllCategories.fulfilled, (state, action) => {
         const { workspaceId, categories } = action.payload;
-        state.categories[workspaceId] = categories;
+        // Ensure all required fields are present
+        state.categories[workspaceId] = categories.map((cat: any) => ({
+          id: cat.id,
+          name: cat.name,
+          slug: cat.slug ?? '',
+          description: cat.description ?? '',
+          parentId: cat.parentId ?? null,
+          workspaceId: cat.workspaceId,
+          children: cat.children ?? [],
+          products: cat.products ?? [],
+        }));
         state.isLoading = false;
       })
       .addCase(fetchAllCategories.rejected, (state, action) => {
